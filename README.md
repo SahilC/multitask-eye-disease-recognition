@@ -3,6 +3,9 @@ Multitask learning for eye disease recognition.
 
 Work done in Microsoft AI Research. 
 
-Code coming soon. 
+Run the code with:- 
+```
+python dataset.py
+```
 
 
