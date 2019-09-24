@@ -158,8 +158,8 @@ def compute_topk(topk_vals, gt, k):
         topk_acc += preds[:, i].eq(gt).sum().item()
     return (topk_acc / topk_vals.size(0))
 
-def compute_bleu(text1, preds1):
-    global ind2word
+def compute_bleu(lang, text1, preds1):
+    ind2word = lang.index2word
     bleu = 0
     sents_gt = []
     sents_pred = []

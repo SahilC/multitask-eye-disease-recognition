@@ -1,24 +1,28 @@
+import torch
+import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 import os
 from datetime import datetime
-from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1,calculate_confusion_matrix,readLangs, indexFromSentence
+from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1, calculate_confusion_matrix
 class Trainer(object):
-    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100):
+    def __init__(self, model, optimizer, scheduler, criterion, epochs, lang, print_every = 100, min_val_loss = 100):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.epochs = epochs
         self.criterion = criterion
         self.print_every = print_every
-        self.min_val_loss = min_val_loss 
-        self.save_location_dir = os.path.join('models', datetime.now())
-        if not os.path.exists(self.save_location):
-            os.mkdir(self.save_location)
+        self.min_val_loss = min_val_loss
+        self.lang = lang
+        self.save_location_dir = os.path.join('models', str(datetime.now()))
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if not os.path.exists(self.save_location_dir):
+            os.mkdir(self.save_location_dir)
         self.save_path = os.path.join(self.save_location_dir, 'best_model.pt')
         self.summary_writer =  SummaryWriter(os.path.join(self.save_location_dir, 'logs'), 300)
 
-    def train(self, train_loader, val_loader):
+    def train(self, train_loader, val_loader, test_loader):
         for e in range(self.epochs):
                 self.model.train()
                 total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc, accuracy, bleu = self.train_iteration(train_loader)
@@ -66,11 +70,11 @@ class Trainer(object):
         total_tl3 = 0
         total_train_loss = 0.0
         for i, (images, labels, f_labels, text) in enumerate(train_loader):
-           images = images.to(device)
-           labels = labels.to(device)
-           f_labels = f_labels.to(device)
-           text = text.to(device)
-           optimizer.zero_grad()
+           images = images.to(self.device)
+           labels = labels.to(self.device)
+           f_labels = f_labels.to(self.device)
+           text = text.to(self.device)
+           self.optimizer.zero_grad()
            disease, f_disease, text_pred = self.model(images, text)
            loss1 = self.criterion(disease, labels)
            loss2 = self.criterion(f_disease, f_labels)
@@ -82,7 +86,7 @@ class Trainer(object):
            loss += text_loss
            
            loss.backward()
-           optimizer.step()
+           self.optimizer.step()
 
            train_loss += loss.item()
            total_train_loss += loss.item()
@@ -97,7 +101,7 @@ class Trainer(object):
            preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
            text1 = text[:, 1:].squeeze().tolist()
            preds1 = preds.tolist()
-           tbleu, _, _ = compute_bleu(text1, preds1)
+           tbleu, _, _ = compute_bleu(self.lang, text1, preds1)
            bleu += tbleu
 
            if i != 0 and i % self.print_every == 0:
@@ -146,10 +150,10 @@ class Trainer(object):
         total_topk = {k:0.0 for k in k_vals}
         per_disease_topk = defaultdict(lambda: {k:0.0 for k in k_vals})
         for i, (images, labels, f_labels, text) in enumerate(val_loader):
-            images = images.to(device)
-            labels = labels.to(device)
-            f_labels = f_labels.to(device)
-            text = text.to(device)
+            images = images.to(self.device)
+            labels = labels.to(self.device)
+            f_labels = f_labels.to(self.device)
+            text = text.to(self.device)
             diseases, fine_diseases, text_pred = self.model(images, text)
             loss1 = self.criterion(diseases, labels)
             loss2 = self.criterion(fine_diseases, f_labels)
@@ -181,7 +185,7 @@ class Trainer(object):
             preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
             text1 = text[:, 1:].squeeze().tolist()
             preds1 = preds.tolist()
-            t_bleu, sent_gt, sent_pred = compute_bleu(text1, preds1)
+            t_bleu, sent_gt, sent_pred = compute_bleu(self.lang, text1, preds1)
 
             # Book-keeping
             bleu += t_bleu

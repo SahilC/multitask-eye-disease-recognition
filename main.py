@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 import torch
@@ -33,18 +34,17 @@ def run():
     lr = 1e-3
     weight_decay = 1e-6
     momentum = 0.9
+    dataset_dir = '/data2/fundus_images/'
 
-    # custom_from_images =  CustomDatasetFromImages('all_data_filtered.csv', class_type=class_type)
-    trainval_from_images = CustomDatasetFromImages(trainval_csv_path, class_type=class_type)
-    test_dataset = CustomDatasetFromImages(test_csv_path, class_type=class_type)
+    trainval_from_images = CustomDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
+    test_dataset = CustomDatasetFromImages(test_csv_path, data_dir = dataset_dir)
 
-    dset_len = len(custom_from_images)
+    dset_len = len(trainval_from_images)
     val_size = int(val_split * dset_len)
     train_size = dset_len - val_size
 
-    lang1 = train_dataset.get_lang()
 
-    train_dataset, val_dataset = torch.utils.data.random_split(custom_from_images,
+    train_dataset, val_dataset = torch.utils.data.random_split(trainval_from_images,
                                                                [train_size,
                                                                 val_size])
 
@@ -67,6 +67,7 @@ def run():
                                               shuffle=True,
                                               num_workers=num_workers)
 
+    lang = train_dataset.dataset.get_lang()
 
     # model = MnistCNNModel()
     # model = models.densenet121(pretrained=True)
@@ -74,14 +75,13 @@ def run():
     # model = models.resnet101(pretrained=True)
     # model = models.resnet34(pretrained=True)
     model = models.vgg19(pretrained=True)
-    model = MultiTaskModel(model, vocab_size=lang1.n_words)
+    model = MultiTaskModel(model, vocab_size=lang.n_words)
     model = nn.DataParallel(model)
     # model.load_state_dict(torch.load('best_model.pth'))
 
     print(model)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
+    model = model.to('cuda')
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(),
@@ -94,7 +94,7 @@ def run():
                                   patience=3,
                                   min_lr=1e-7,
                                   verbose=True)
-    trainer = Trainer(model, optimizer, scheduler, criterion, epochs, print_every =
+    trainer = Trainer(model, optimizer, scheduler, criterion, epochs, lang, print_every =
             print_every)
     trainer.train(train_loader, val_loader, test_loader)
 

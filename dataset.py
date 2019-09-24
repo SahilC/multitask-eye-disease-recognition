@@ -14,15 +14,15 @@ from collections import defaultdict
 from torchvision import transforms
 from torch.utils.data.dataset import Dataset  # For custom datasets
 
+from utils import readLangs, indexFromSentence
 class CustomDatasetFromImages(Dataset):
-    def __init__(self, csv_path, class_type = 'disease', data_dir='/data/sachelar/fundus_images'):
+    def __init__(self, csv_path, data_dir='/data/sachelar/fundus_images'):
         """
         Args:
             csv_path (string): path to csv file
             img_path (string): path to the folder where images are
             transform: pytorch transforms for transforms and tensor conversion
         """
-        self.class_type = class_type
         self.label2idx1 = {'Melanoma':0, 'Glaucoma':1, 'AMD':2, 'Diabetic Retinopathy':3}
             # 541 classes
         # self.label2idx2 = {j.strip().lower(): (int(i.strip().lower()) -1) for i, j in list(csv.reader(open('labels.txt', 'r'), delimiter='\t'))}

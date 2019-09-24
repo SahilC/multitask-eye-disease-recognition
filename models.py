@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import random
+
 class LanguageModel(nn.Module):
     def __init__(self, vocab_size = 193, embed_size = 256, hidden_size = 512,
             num_layers = 1, dropout_p = 0.1):
@@ -31,7 +33,7 @@ class LanguageModel(nn.Module):
         decoder_input = text[:, 0]
         state = self.project(img_feats).unsqueeze(0)
         for i in range(1, self.max_length):
-            use_teacher_forcing = True if random.random() < self.teacher_forcing_ratio else False
+            use_teacher_forcing = True if (self.training and random.random() < self.teacher_forcing_ratio) else False
             embeddings = self.dropout(self.embedding(decoder_input)).squeeze()
             feats, state = self.gru(embeddings.unsqueeze(1), state)
             pred = self.linear(state).squeeze()
