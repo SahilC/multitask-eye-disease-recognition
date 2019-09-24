@@ -2,6 +2,7 @@ import torch
 from nltk import word_tokenize
 import re
 import unicodedata
+from nltk.translate.bleu_score import sentence_bleu
 import numpy as np
 from sklearn.metrics import recall_score, precision_score, f1_score, classification_report, confusion_matrix
 
@@ -171,7 +172,7 @@ def compute_bleu(text1, preds1):
                     sent1.append(ind2word[text1[k][j]])
                 if preds1[k][j] != 0 and preds1[k][j] != 1 and preds1[k][j] != 2:
                     sent2.append(ind2word[preds1[k][j]])
-        if len(sent2) >0 and len(sent2) < 4 and weights  == (0.25, 0.25, 0.25, 0.25):
+        if len(sent2) > 0 and len(sent2) < 4 and weights  == (0.25, 0.25, 0.25, 0.25):
             weights = (1 / len(sent2),) * len(sent2)
         c_bleu = sentence_bleu([sent1], sent2, weights = weights)
         sents_gt.append(sent1)

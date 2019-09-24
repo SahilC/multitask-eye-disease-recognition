@@ -1,3 +1,5 @@
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torchvision.models as models
@@ -5,30 +7,46 @@ import torchvision.models as models
 from trainer import Trainer
 from models import MultiTaskModel
 from dataset import CustomDatasetFromImages
+
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+# Hacks for Reproducibility
+seed = 3
+torch.manual_seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+np.random.seed(seed)
+
+os.environ['CUDA_VISIBLE_DEVICES']='2, 3'
+
+# from cnn_model import MnistCNNModel
+
 def run():
     batch_size = 64
     epochs = 20
     val_split = 0.15
     num_workers = 32
     print_every = 100
-    class_type = 'fine-grained-disease'
-    csv_path = 'trainset.csv'
+    trainval_csv_path = 'trainset.csv'
+    test_csv_path = 'testset.csv'
+
+    lr = 1e-3
+    weight_decay = 1e-6
+    momentum = 0.9
 
     # custom_from_images =  CustomDatasetFromImages('all_data_filtered.csv', class_type=class_type)
-    custom_from_images = CustomDatasetFromImages(csv_path, class_type=class_type)
+    trainval_from_images = CustomDatasetFromImages(trainval_csv_path, class_type=class_type)
+    test_dataset = CustomDatasetFromImages(test_csv_path, class_type=class_type)
 
     dset_len = len(custom_from_images)
-    test_size = int(val_split * dset_len)
     val_size = int(val_split * dset_len)
-    train_size = dset_len - val_size - test_size
-
-    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(custom_from_images,
-                                                                             [train_size,
-                                                                              val_size,
-                                                                              test_size])
-
+    train_size = dset_len - val_size
 
     lang1 = train_dataset.get_lang()
+
+    train_dataset, val_dataset = torch.utils.data.random_split(custom_from_images,
+                                                               [train_size,
+                                                                val_size])
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                batch_size=batch_size,
@@ -67,9 +85,9 @@ def run():
 
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(),
-                                weight_decay=1e-6,
-                                momentum=0.9,
-                                lr=1e-3,
+                                weight_decay=weight_decay,
+                                momentum=momentum,
+                                lr=lr,
                                 nesterov=True)
     scheduler = ReduceLROnPlateau(optimizer,
                                   factor=0.5,

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class LanguageModel(nn.Module):
     def __init__(self, vocab_size = 193, embed_size = 256, hidden_size = 512,

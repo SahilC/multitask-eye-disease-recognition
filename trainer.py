@@ -2,6 +2,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import os
 from datetime import datetime
+from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1,calculate_confusion_matrix,readLangs, indexFromSentence
 class Trainer(object):
     def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100):
         self.model = model
@@ -30,7 +31,7 @@ class Trainer(object):
                 self.summary_writer.add_scalar('training/t3_bleu', bleu, e)
                 val_loss, total_d_acc, total_acc, bleu, disease_f1, disease_recall, 
                 disease_precision, total_f1, total_recall, total_precision, 
-                sent_gt, sent_pred = self.validate(val_loader)
+                sent_gt, sent_pred, total_topk, per_disease_topk = self.validate(val_loader)
 
                 self.summary_writer.add_scalar('validation/val_loss', val_loss, e)
                 self.summary_writer.add_scalar('validation/t1_acc', total_d_acc, e)
@@ -41,10 +42,14 @@ class Trainer(object):
                         disease_recall, e)
                 self.summary_writer.add_scalars('validation/precision_scores',
                         disease_precision, e)
-                
+
                 self.summary_writer.add_scalars('validation/f1_mean', np.mean(total_f1), e)
                 self.summary_writer.add_scalars('validation/recall_mean', np.mean(total_recall), e)
                 self.summary_writer.add_scalars('validation/precision_mean',np.mean(total_precision), e)
+                self.summary_writer.add_scalars('validation/topk', total_topk, e)
+                for i in per_disease_topk:
+                    self.summary_writer.add_scalars('validation/topk_'+str(i), per_disease_topk[i], e)
+
                 for i, k in enumerate(np.random.choice(list(range(len(sent_gt))), size=10, replace=False)):
                     self.summary_writer.add_text('validation/sentence_gt'+str(i),
                             sent_gt[k], e)
@@ -121,7 +126,7 @@ class Trainer(object):
               total_tl2 = 0
               total_tl3 = 0
               total_train_loss = 0.0
-        return (total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc/batch_size, accuracy/batch_size, bleu) 
+        return (total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc/batch_size, accuracy/batch_size, bleu)
 
     def validate(self, val_loader, epoch = 0):
         self.model.eval()
@@ -136,6 +141,10 @@ class Trainer(object):
         total_l1 = 0
         total_l2  = 0
         total_l3 = 0
+
+        k_vals = [1, 2, 3, 4, 5]
+        total_topk = {k:0.0 for k in k_vals}
+        per_disease_topk = defaultdict(lambda: {k:0.0 for k in k_vals})
         for i, (images, labels, f_labels, text) in enumerate(val_loader):
             images = images.to(device)
             labels = labels.to(device)
@@ -158,6 +167,14 @@ class Trainer(object):
             total_d_acc += (d_pred.eq(labels).sum().item() / batch_size)
             acc, recall, precision, f1 = accuracy_recall_precision_f1(pred,
                     f_labels)
+
+            for k in k_vals:
+                total_topk[k] += compute_topk(pred, f_labels, k)
+                for d in [0, 1, 2, 3]:
+                    mask = labels.eq(d)
+                    if mask.sum() > 0:
+                        per_disease_topk[d][k] += compute_topk(preds[mask], f_labels[mask], k)
+
             total_recall += np.mean(recall)
             total_precision += np.mean(precision)
             total_f1 += np.mean(f1)
@@ -198,10 +215,15 @@ class Trainer(object):
             disease_f1[i] = total_f1[i]
             disease_precision[i] = total_precision[i]
             disease_recall[i] = total_recall[i]
-    
+
+        total_topk = {k : total_topk[k] / len(val_loader) for k in k_vals}
+        for d in [0,1,2,3]:
+            for k in k_vals:
+                per_disease_topk[d][k] = per_disease_topk[d][k] / len(val_loader)
+
         # print('-----------CM------------')
         # print(total_cm)
         # print('-----------------------')
         return (val_loss, total_d_acc, total_acc, bleu, disease_f1,
                 disease_recall, disease_precision, total_f1, total_recall,
-                total_precision, sent_gt, sent_pred) 
+                total_precision, sent_gt, sent_pred, total_topk, per_disease_topk) 
