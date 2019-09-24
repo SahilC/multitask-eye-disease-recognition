@@ -9,7 +9,7 @@ from collections import defaultdict
 from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1, calculate_confusion_matrix
 
 class Trainer(object):
-    def __init__(self, model, optimizer, scheduler, criterion, epochs, lang, print_every = 100, min_val_loss = 100):
+    def __init__(self, model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = 100, min_val_loss = 100):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -20,6 +20,7 @@ class Trainer(object):
         self.lang = lang
         self.save_location_dir = os.path.join('models', str(datetime.now()))
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.tasks = tasks
         if not os.path.exists(self.save_location_dir):
             os.mkdir(self.save_location_dir)
         self.save_path = os.path.join(self.save_location_dir, 'best_model.pt')
@@ -71,6 +72,7 @@ class Trainer(object):
         total_tl2 = 0
         total_tl3 = 0
         total_train_loss = 0.0
+        losses = []
         for i, (images, labels, f_labels, text) in enumerate(train_loader):
                batch_size = images.size(0)
                images = images.to(self.device)
@@ -80,13 +82,18 @@ class Trainer(object):
                self.optimizer.zero_grad()
                disease, f_disease, text_pred = self.model(images, text)
                loss1 = self.criterion(disease, labels)
-               loss2 = self.criterion(f_disease, f_labels)
+               losses.append(loss1)
 
-               loss = (loss1 + loss2)
-               text_loss = 0.0
+               loss2 = self.criterion(f_disease, f_labels)
+               losses.append(loss2)
+
+               loss3 = 0.0
                for k in range(text_pred.size(1)):
-                   text_loss += self.criterion(text_pred[:, k].squeeze(), text[:, k + 1].squeeze())
-               loss += text_loss
+                   loss3 += self.criterion(text_pred[:, k].squeeze(), text[:, k + 1].squeeze())
+               losses.append(loss3)
+
+               # Only consider tasks defined in the task list
+               loss = torch.stack(losses)[self.tasks].sum()
                
                loss.backward()
                self.optimizer.step()
@@ -111,7 +118,7 @@ class Trainer(object):
                   avg_loss = train_loss / self.print_every
                   accuracy = accuracy / self.print_every
                   total_disease_acc = total_disease_acc / self.print_every
-                  avg_text_loss = text_loss / self.print_every
+                  avg_text_loss = loss3 / self.print_every
                   bleu = bleu / self.print_every
                   total_train_loss = total_train_loss / self.print_every
                   total_tl1 = total_tl1 / self.print_every
@@ -122,7 +129,7 @@ class Trainer(object):
                               accuracy/batch_size,
                               total_disease_acc / batch_size,
                               bleu,
-                              text_loss.item()))
+                              loss3.item()))
 
                   train_loss = 0.0
                   text_loss = 0.0
@@ -152,6 +159,7 @@ class Trainer(object):
         k_vals = [1, 2, 3, 4, 5]
         total_topk = {k:0.0 for k in k_vals}
         per_disease_topk = defaultdict(lambda: {str(k):0.0 for k in k_vals})
+        losses = []
         for i, (images, labels, f_labels, text) in enumerate(val_loader):
             batch_size = images.size(0)
             images = images.to(self.device)
@@ -160,13 +168,15 @@ class Trainer(object):
             text = text.to(self.device)
             diseases, fine_diseases, text_pred = self.model(images, text)
             loss1 = self.criterion(diseases, labels)
+            losses.append(loss1)
             loss2 = self.criterion(fine_diseases, f_labels)
-            loss = (loss1 + loss2)
-            val_loss += loss.item()
+            losses.append(loss2)
             text_loss = 0.0
             for k in range(text_pred.size(1)):
                 text_loss += self.criterion(text_pred[:,k].squeeze(), text[:,k + 1].squeeze())
-            val_loss += (text_loss.item())
+            losses.append(text_loss)
+
+            val_loss = torch.stack(losses)[self.tasks].sum()
 
             # Evaluation of P, R, F1, BLEU
             preds = F.log_softmax(fine_diseases, dim = -1)

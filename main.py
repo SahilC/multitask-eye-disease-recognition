@@ -27,6 +27,7 @@ def run():
     print_every = 100
     trainval_csv_path = 'trainset.csv'
     test_csv_path = 'testset.csv'
+    tasks = [0, 1, 2]
 
     lr = 1e-3
     weight_decay = 1e-6
@@ -91,7 +92,7 @@ def run():
                                   patience=3,
                                   min_lr=1e-7,
                                   verbose=True)
-    trainer = Trainer(model, optimizer, scheduler, criterion, epochs, lang, print_every =
+    trainer = Trainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every =
             print_every)
     trainer.train(train_loader, val_loader, test_loader)
 
