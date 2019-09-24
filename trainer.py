@@ -3,7 +3,7 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 from datetime import datetime
 class Trainer(object):
-    def __init__(self, model, optimizer, scheduler, criterion, epochs, min_val_loss = 100, print_every = 100):
+    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100)
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -30,28 +30,26 @@ class Trainer(object):
                 self.summary_writer.add_scalar('training/t3_bleu', bleu, e)
                 val_loss, total_d_acc, total_acc, bleu, disease_f1, disease_recall, 
                 disease_precision, total_f1, total_recall, total_precision, 
-                sent_gt, sent_pred = self.validate(val_loader, e)
+                sent_gt, sent_pred = self.validate(val_loader)
 
-                self.summary_writer.add_scalar('validation/val_loss', val_loss, epoch)
-                self.summary_writer.add_scalar('validation/t1_acc', total_d_acc, epoch)
-                self.summary_writer.add_scalar('validation/t2_acc', total_acc, epoch)
-                self.summary_writer.add_scalar('validation/BLEU', bleu, epoch)
-                self.summary_writer.add_scalars('validation/f1_scores', disease_f1, epoch)
+                self.summary_writer.add_scalar('validation/val_loss', val_loss, e)
+                self.summary_writer.add_scalar('validation/t1_acc', total_d_acc, e)
+                self.summary_writer.add_scalar('validation/t2_acc', total_acc, e)
+                self.summary_writer.add_scalar('validation/BLEU', bleu, e)
+                self.summary_writer.add_scalars('validation/f1_scores', disease_f1, e)
                 self.summary_writer.add_scalars('validation/recall_scores',
-                        disease_recall, epoch)
+                        disease_recall, e)
                 self.summary_writer.add_scalars('validation/precision_scores',
-                        disease_precision, epoch)
+                        disease_precision, e)
                 
-                self.summary_writer.add_scalars('validation/f1_mean', np.mean(total_f1), epoch)
-                self.summary_writer.add_scalars('validation/recall_mean', np.mean(total_recall), epoch)
-                self.summary_writer.add_scalars('validation/precision_mean',np.mean(total_precision), epoch)
-                for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
-                    self.summary_writer.add_text('validation/sentence_gt'+str(k),
-                            sent_gt[k], epoch)
-                    self.summary_writer.add_text('validation/sentence_pred'+str(k),
-                            sent_preds[k], epoch)
-
-
+                self.summary_writer.add_scalars('validation/f1_mean', np.mean(total_f1), e)
+                self.summary_writer.add_scalars('validation/recall_mean', np.mean(total_recall), e)
+                self.summary_writer.add_scalars('validation/precision_mean',np.mean(total_precision), e)
+                for i, k in enumerate(np.random.choice(list(range(len(sent_gt))), size=10, replace=False)):
+                    self.summary_writer.add_text('validation/sentence_gt'+str(i),
+                            sent_gt[k], e)
+                    self.summary_writer.add_text('validation/sentence_pred'+str(i),
+                            sent_preds[k], e)
 
     def train_iteration(self, train_loader):
         train_loss = 0.0
@@ -97,16 +95,16 @@ class Trainer(object):
            tbleu, _, _ = compute_bleu(text1, preds1)
            bleu += tbleu
 
-           if i != 0 and i % print_every == 0:
-              avg_loss = train_loss / print_every
-              accuracy = accuracy / print_every
-              total_disease_acc = total_disease_acc / print_every
-              avg_text_loss = text_loss / print_every
-              bleu = bleu / print_every
-              total_train_loss = total_train_loss / print_every
-              total_tl1 = total_tl1 / print_every
-              total_tl2 = total_tl2 / print_every
-              total_tl3 = total_tl3 / print_every
+           if i != 0 and i % self.print_every == 0:
+              avg_loss = train_loss / self.print_every
+              accuracy = accuracy / self.print_every
+              total_disease_acc = total_disease_acc / self.print_every
+              avg_text_loss = text_loss / self.print_every
+              bleu = bleu / self.print_every
+              total_train_loss = total_train_loss / self.print_every
+              total_tl1 = total_tl1 / self.print_every
+              total_tl2 = total_tl2 / self.print_every
+              total_tl3 = total_tl3 / self.print_every
 
               print('Epoch: {}\tIter:{}\tTraining Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}\tTextLoss:{:.8f}'.format(e, i, avg_loss,
                           accuracy/batch_size,

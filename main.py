@@ -76,8 +76,9 @@ def run():
                                   patience=3,
                                   min_lr=1e-7,
                                   verbose=True)
-    trainer = Trainer(model, optimizer, scheduler, epochs)
-    trainer.train(train_loader)
+    trainer = Trainer(model, optimizer, scheduler, criterion, epochs, print_every =
+            print_every)
+    trainer.train(train_loader, val_loader, test_loader)
 
 if __name__ == "__main__":
     run()
