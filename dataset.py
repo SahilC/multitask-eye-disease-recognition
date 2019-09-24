@@ -14,12 +14,10 @@ from collections import defaultdict
 # Torch imports
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.models as models
 from torch.autograd import Variable
 from torchvision import transforms
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data.dataset import Dataset  # For custom datasets
-from models import MultiTaskModel
 from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1,calculate_confusion_matrix,readLangs, indexFromSentence
 
 ind2word = None
@@ -44,7 +42,6 @@ class CustomDatasetFromImages(Dataset):
             img_path (string): path to the folder where images are
             transform: pytorch transforms for transforms and tensor conversion
         """
-        global ind2word, lang1
         self.class_type = class_type
         self.label2idx1 = {'Melanoma':0, 'Glaucoma':1, 'AMD':2, 'Diabetic Retinopathy':3}
             # 541 classes
@@ -62,14 +59,15 @@ class CustomDatasetFromImages(Dataset):
         self.label_arr1 = [self.label2idx1[i] for i in np.asarray(self.data_info.iloc[:, -2])]
         self.label_arr2 = []
         self.lang, self.pairs = readLangs(self.data_info.iloc[:, -1], 15)
-        ind2word = self.lang.index2word
-        lang1 = self.lang
 
         for i,z in enumerate(np.asarray(self.data_info.iloc[:, -1])):
             self.label_arr2.append(self.label2idx2[z.strip().lower()])
         # self.label_arr2 = [self.label2idx2[i] for i in np.asarray(self.data_info.iloc[:, -1])]
         # self.operation_arr = np.asarray(self.data_info.iloc[:, 2])
         self.data_len = len(self.data_info.index)
+
+    def get_lang(self):
+        return self.lang
 
     def __getitem__(self, index):
         single_image_name = self.image_arr[index]
@@ -85,63 +83,6 @@ class CustomDatasetFromImages(Dataset):
         return self.data_len
 
 
-if __name__ == "__main__":
-    batch_size = 64
-    epochs = 20
-    val_split = 0.15
-    print_every = 100
-    class_type = 'fine-grained-disease'
-
-    # custom_from_images =  CustomDatasetFromImages('all_data_filtered.csv', class_type=class_type)
-    custom_from_images =  CustomDatasetFromImages('cleaned_data_dedup.csv', class_type=class_type)
-
-    dset_len = len(custom_from_images)
-    test_size = int(val_split * dset_len)
-    val_size = int(val_split * dset_len)
-    train_size = int(dset_len - 2 * val_size)
-
-    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(custom_from_images, [train_size, val_size, test_size])
-
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                                    batch_size=batch_size,
-                                                    pin_memory=False,
-                                                    drop_last = True,
-                                                    shuffle=True,
-                                                    num_workers=32)
-    val_loader = torch.utils.data.DataLoader(dataset=val_dataset,
-                                                    batch_size=batch_size,
-                                                    pin_memory=False,
-                                                    drop_last = True,
-                                                    shuffle=True, 
-                                                    num_workers = 32)
-    test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-                                                    batch_size=batch_size,
-                                                    pin_memory=False,
-                                                    drop_last = True,
-                                                    shuffle=True, 
-                                                    num_workers = 32)
-
-
-    #model = MnistCNNModel()
-    # model = models.densenet121(pretrained=True)
-    # model = models.googlenet(pretrained=True)
-    # model = models.resnet101(pretrained=True)
-    # model = models.resnet34(pretrained=True)
-    model = models.vgg19(pretrained=True)
-    model = MultiTaskModel(model, vocab_size = lang1.n_words) 
-    model  = nn.DataParallel(model)
-    # model.load_state_dict(torch.load('best_model.pth'))
-
-    print(model)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    model = model.to(device)
-
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(),
-            weight_decay=1e-6,momentum=0.9, lr=1e-3, nesterov=True)
-    scheduler = ReduceLROnPlateau(optimizer, factor=0.5, patience=3, min_lr=1e-7, verbose=True)
     min_val_loss = 100
 
     model.eval()
