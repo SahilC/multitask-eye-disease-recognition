@@ -150,3 +150,31 @@ def calculate_confusion_matrix(y_pred, y_target):
 
     return cm
 
+def compute_topk(topk_vals, gt, k):
+    _, preds = topk_vals.topk(k = k, dim = 1)
+    topk_acc = 0
+    for i in range(preds.size(1)):
+        topk_acc += preds[:, i].eq(gt).sum().item()
+    return (topk_acc / topk_vals.size(0))
+
+def compute_bleu(text1, preds1):
+    global ind2word
+    bleu = 0
+    sents_gt = []
+    sents_pred = []
+    for k in range(len(text1)):
+        sent1 = []
+        sent2 = []
+        weights = (0.25, 0.25, 0.25, 0.25)
+        for j in range(len(text1[k])):
+                if text1[k][j] != 0 and text1[k][j] != 1 and text1[k][j] != 2:
+                    sent1.append(ind2word[text1[k][j]])
+                if preds1[k][j] != 0 and preds1[k][j] != 1 and preds1[k][j] != 2:
+                    sent2.append(ind2word[preds1[k][j]])
+        if len(sent2) >0 and len(sent2) < 4 and weights  == (0.25, 0.25, 0.25, 0.25):
+            weights = (1 / len(sent2),) * len(sent2)
+        c_bleu = sentence_bleu([sent1], sent2, weights = weights)
+        sents_gt.append(sent1)
+        sents_pred.append(sent2)
+        bleu += c_bleu
+    return (bleu/len(text1)), sents_gt, sents_pred
