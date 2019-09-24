@@ -12,7 +12,7 @@ def run():
     num_workers = 32
     print_every = 100
     class_type = 'fine-grained-disease'
-    csv_path = 'cleaned_data_dedup.csv'
+    csv_path = 'trainset.csv'
 
     # custom_from_images =  CustomDatasetFromImages('all_data_filtered.csv', class_type=class_type)
     custom_from_images = CustomDatasetFromImages(csv_path, class_type=class_type)

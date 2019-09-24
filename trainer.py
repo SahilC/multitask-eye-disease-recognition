@@ -3,7 +3,7 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 from datetime import datetime
 class Trainer(object):
-    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100)
+    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -19,7 +19,7 @@ class Trainer(object):
 
     def train(self, train_loader, val_loader):
         for e in range(self.epochs):
-                model.train()
+                self.model.train()
                 total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc, accuracy, bleu = self.train_iteration(train_loader)
                 self.summary_writer.add_scalar('training/total_train_loss', total_train_loss, e)
                 self.summary_writer.add_scalar('training/total_t1_loss', total_tl1, e)
@@ -66,7 +66,7 @@ class Trainer(object):
            f_labels = f_labels.to(device)
            text = text.to(device)
            optimizer.zero_grad()
-           disease, f_disease, text_pred = model(images, text)
+           disease, f_disease, text_pred = self.model(images, text)
            loss1 = self.criterion(disease, labels)
            loss2 = self.criterion(f_disease, f_labels)
 
@@ -124,7 +124,7 @@ class Trainer(object):
         return (total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc/batch_size, accuracy/batch_size, bleu) 
 
     def validate(self, val_loader, epoch = 0):
-        model.eval()
+        self.model.eval()
         val_loss = 0.0
         total_acc = 0.0
         total_recall = 0.0
@@ -141,7 +141,7 @@ class Trainer(object):
             labels = labels.to(device)
             f_labels = f_labels.to(device)
             text = text.to(device)
-            diseases, fine_diseases, text_pred = model(images, text)
+            diseases, fine_diseases, text_pred = self.model(images, text)
             loss1 = self.criterion(diseases, labels)
             loss2 = self.criterion(fine_diseases, f_labels)
             loss = (loss1 + loss2)
@@ -187,7 +187,7 @@ class Trainer(object):
 
         self.scheduler.step(val_loss)
         if val_loss <= self.min_val_loss:
-           torch.save(model.state_dict(), self.save_path)
+           torch.save(self.model.state_dict(), self.save_path)
            self.min_val_loss = val_loss
 
         disease_f1 = {}
