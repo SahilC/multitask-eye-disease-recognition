@@ -5,6 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 from datetime import datetime
 from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1, calculate_confusion_matrix
+
 class Trainer(object):
     def __init__(self, model, optimizer, scheduler, criterion, epochs, lang, print_every = 100, min_val_loss = 100):
         self.model = model
@@ -26,6 +27,7 @@ class Trainer(object):
         for e in range(self.epochs):
                 self.model.train()
                 total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc, accuracy, bleu = self.train_iteration(train_loader)
+                print("Epoch", e)
                 self.summary_writer.add_scalar('training/total_train_loss', total_train_loss, e)
                 self.summary_writer.add_scalar('training/total_t1_loss', total_tl1, e)
                 self.summary_writer.add_scalar('training/total_t2_loss', total_tl2, e)
@@ -70,6 +72,7 @@ class Trainer(object):
         total_tl3 = 0
         total_train_loss = 0.0
         for i, (images, labels, f_labels, text) in enumerate(train_loader):
+           batch_size = images.size(0)
            images = images.to(self.device)
            labels = labels.to(self.device)
            f_labels = f_labels.to(self.device)
@@ -115,7 +118,7 @@ class Trainer(object):
               total_tl2 = total_tl2 / self.print_every
               total_tl3 = total_tl3 / self.print_every
 
-              print('Epoch: {}\tIter:{}\tTraining Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}\tTextLoss:{:.8f}'.format(e, i, avg_loss,
+              print('Iter:{}\tTraining Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}\tTextLoss:{:.8f}'.format(i, avg_loss,
                           accuracy/batch_size,
                           total_disease_acc / batch_size,
                           bleu,
@@ -150,6 +153,7 @@ class Trainer(object):
         total_topk = {k:0.0 for k in k_vals}
         per_disease_topk = defaultdict(lambda: {k:0.0 for k in k_vals})
         for i, (images, labels, f_labels, text) in enumerate(val_loader):
+            batch_size = images.size(0)
             images = images.to(self.device)
             labels = labels.to(self.device)
             f_labels = f_labels.to(self.device)
