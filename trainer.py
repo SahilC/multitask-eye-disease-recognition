@@ -73,8 +73,6 @@ class Trainer(object):
         total_train_loss = 0.0
         for i, (images, labels, f_labels, text) in enumerate(train_loader):
                batch_size = images.size(0)
-               
-               break
                images = images.to(self.device)
                labels = labels.to(self.device)
                f_labels = f_labels.to(self.device)
