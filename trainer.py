@@ -72,7 +72,7 @@ class Trainer(object):
         total_tl2 = 0
         total_tl3 = 0
         total_train_loss = 0.0
-        losses = []
+        loss = torch.tensor(0).to(self.device)
         for i, (images, labels, f_labels, text) in enumerate(train_loader):
                batch_size = images.size(0)
                images = images.to(self.device)
@@ -82,18 +82,15 @@ class Trainer(object):
                self.optimizer.zero_grad()
                disease, f_disease, text_pred = self.model(images, text)
                loss1 = self.criterion(disease, labels)
-               losses.append(loss1)
 
                loss2 = self.criterion(f_disease, f_labels)
-               losses.append(loss2)
 
                loss3 = 0.0
                for k in range(text_pred.size(1)):
                    loss3 += self.criterion(text_pred[:, k].squeeze(), text[:, k + 1].squeeze())
-               losses.append(loss3)
 
                # Only consider tasks defined in the task list
-               loss = torch.stack(losses)[self.tasks].sum()
+               loss = torch.stack((loss1,loss2, loss3))[self.tasks].sum()
                
                loss.backward()
                self.optimizer.step()
@@ -102,7 +99,7 @@ class Trainer(object):
                total_train_loss += loss.item()
                total_tl1 += loss1.item()
                total_tl2 += loss2.item()
-               total_tl3 += text_loss.item()
+               total_tl3 += loss3.item()
 
                pred = F.log_softmax(f_disease, dim = -1).argmax(dim=-1)
                accuracy += pred.eq(f_labels).sum().item()
