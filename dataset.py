@@ -61,3 +61,33 @@ class CustomDatasetFromImages(Dataset):
 
     def __len__(self):
         return self.data_len
+
+class GradedDatasetFromImages(Dataset):
+    def __init__(self, csv_path, data_dir='/data/sachelar/fundus_images'):
+        """
+        Args:
+            csv_path (string): path to csv file
+            img_path (string): path to the folder where images are
+            transform: pytorch transforms for transforms and tensor conversion
+        """
+        self.label2idx1 = {'melanoma':0, 'glaucoma':0, 'amd':0, 'diabetic retinopathy':0, 'Normal':1}
+
+        self.to_tensor = transforms.Compose([
+                                transforms.Resize((64, 64)),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+        self.data_info = pd.read_csv(csv_path, header=None)
+        self.image_arr = np.asarray([os.path.join(data_dir, i.replace('%','')) for i in self.data_info.iloc[:,0]])
+        self.label_arr1 = [self.label2idx1[i] for i in np.asarray(self.data_info.iloc[:, -2])]
+        self.data_len = len(self.data_info.index)
+
+    def __getitem__(self, index):
+        single_image_name = self.image_arr[index]
+        img_as_img = Image.open(single_image_name).convert('RGB')
+        img_as_tensor = self.to_tensor(img_as_img)
+        single_image_label = self.label_arr1[index]
+        return img_as_tensor, single_image_label
+
+    def __len__(self):
+        return self.data_len
