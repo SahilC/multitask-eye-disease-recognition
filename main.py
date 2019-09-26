@@ -102,19 +102,22 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
     # trainer = Trainer(model, optimizer, scheduler, criterion, epochs, print_every =  print_every)
     trainer.train(train_loader, val_loader)
     val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall,total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, total_cm = trainer.validate(test_loader)
-    print('Test Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(val_loss, total_acc, total_d_acc, bleu))
-    print('-----------------------')
-    print(total_cm)
-    print('total_topk',total_topk)
-    print('per_disease_topk', per_disease_topk)
-    print('-----------------------')
-    for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
-        print(sent_gt[k])
-        print(sent_pred[k])
-        print('---------------------')
+    with open(trainer.output_log, 'a+') as out:
+        print('Test Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(val_loss, total_acc, total_d_acc, bleu), file=out)
+        print('total_topk',total_topk, file=out)
+        print('per_disease_topk', per_disease_topk, file=out)
+        print(total_cm, file=out)
+        for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
+            print(sent_gt[k], file=out)
+            print(sent_pred[k], file=out)
+            print('---------------------', file=out)
     trainer.test(test_loader)
 
 if __name__ == "__main__":
-    gin.parse_config_file('config.gin')
-    run()
-    gin.clear_config()
+    task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
+    for i, t in task_config:
+        gin.parse_config_file('config.gin')
+        gin.bind_parameter('run.tasks', task_config[i])
+        run()
+        gin.clear_config()
+
