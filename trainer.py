@@ -1,6 +1,6 @@
+import gin
 import numpy as np
 import torch
-from shutil import copyfile
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
@@ -25,7 +25,9 @@ class Trainer(object):
         # Save experiment configuration 
         if not os.path.exists(self.save_location_dir):
             os.mkdir(self.save_location_dir)
-        copyfile('config.gin', os.path.join(self.save_location_dir,'config.gin'))
+        with open(os.path.join(self.save_location_dir,'config.gin'), 'w') as conf:
+            conf.write(gin.operative_config_str())
+        self.output_log = os.path.join(self.save_location_dir,'output_log.txt')
         self.save_path = os.path.join(self.save_location_dir, 'best_model.pt')
         self.summary_writer =  SummaryWriter(os.path.join(self.save_location_dir, 'logs'), 300)
 
@@ -42,16 +44,15 @@ class Trainer(object):
                 self.summary_writer.add_scalar('training/t2_acc', accuracy, e)
                 self.summary_writer.add_scalar('training/t3_bleu', bleu, e)
                 val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall, total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, total_cm = self.validate(val_loader)
-                print('Epoch: {}\tVal Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(e,val_loss, total_acc, total_d_acc, bleu))
-                print('-----------------------')
-                print(total_cm)
-                print('total_topk',total_topk)
-                print('per_disease_topk', per_disease_topk)
-                print('-----------------------')
-                for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
-                    print(sent_gt[k])
-                    print(sent_pred[k])
-                    print('---------------------')
+                with open(self.output_log, 'a+') as out:
+                    print('Epoch: {}\tVal Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(e,val_loss, total_acc, total_d_acc, bleu), file=out)
+                    print('total_topk',total_topk, file=out)
+                    print('per_disease_topk', per_disease_topk, file=out)
+                    print(total_cm, file=out)
+                    for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
+                        print(sent_gt[k], file=out)
+                        print(sent_pred[k], file=out)
+                        print('---------------------', file=out)
 
                 self.summary_writer.add_scalar('validation/val_loss', val_loss, e)
                 self.summary_writer.add_scalar('validation/t1_acc', total_d_acc, e)
@@ -184,7 +185,6 @@ class Trainer(object):
         k_vals = [1, 2, 3, 4, 5]
         total_topk = {k:0.0 for k in k_vals}
         per_disease_topk = defaultdict(lambda: {str(k):0.0 for k in k_vals})
-        losses = []
         with torch.no_grad():
             for i, (_, images, labels, f_labels, text) in enumerate(val_loader):
                 batch_size = images.size(0)
@@ -194,26 +194,30 @@ class Trainer(object):
                 text = text.to(self.device)
                 diseases, fine_diseases, text_pred = self.model(images, text)
                 loss1 = self.criterion(diseases, labels)
-                losses.append(loss1)
                 loss2 = self.criterion(fine_diseases, f_labels)
-                losses.append(loss2)
                 text_loss = 0.0
                 for k in range(text_pred.size(1)):
                     text_loss += self.criterion(text_pred[:,k].squeeze(), text[:,k + 1].squeeze())
-                losses.append(text_loss)
 
-                val_loss = torch.stack(losses)[self.tasks].sum()
+                val_loss += torch.stack((loss1, loss2, text_loss))[self.tasks].sum()
 
                 preds = F.log_softmax(fine_diseases, dim = -1)
                 pred = preds.argmax(dim=-1)
                 d_pred = F.log_softmax(diseases, dim = -1).argmax(dim=-1)
 
-                # Evaluation of P, R, F1, BLEU
+                # Evaluation of P, R, F1, CM, BLEU
                 total_acc += (pred.eq(f_labels).sum().item() / batch_size)
                 total_d_acc += (d_pred.eq(labels).sum().item() / batch_size)
                 acc, recall, precision, f1 = accuracy_recall_precision_f1(d_pred,
                         labels)
+                cm = calculate_confusion_matrix(d_pred, labels)
+                try:
+                    total_cm += (cm / batch_size)
+                except:
+                    print("Error occured for this CM")
+                    print(cm / batch_size)
 
+                # Top-k evaluation
                 for k in k_vals:
                     total_topk[k] += compute_topk(preds, f_labels, k)
                     for d in [0, 1, 2, 3]:
@@ -234,13 +238,6 @@ class Trainer(object):
                 total_l1 += loss1.item()
                 total_l2 += loss2.item()
                 total_l3 += text_loss.item()
-                cm = calculate_confusion_matrix(d_pred, labels)
-                try:
-                    total_cm += (cm / batch_size)
-                except:
-                    print("Error occured for this CM")
-                    print(cm / batch_size)
-                    pass
         bleu = bleu / (len(val_loader))
         val_loss = val_loss / len(val_loader)
         total_l1 /= len(val_loader)
