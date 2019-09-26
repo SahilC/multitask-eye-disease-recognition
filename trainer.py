@@ -21,7 +21,7 @@ class Trainer(object):
         self.lang = lang
         self.tasks = tasks
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.save_location_dir = os.path.join('models',str(datetime.now()).replace(' ','') + '_'.join(str(t) for t in self.tasks))
+        self.save_location_dir = os.path.join('models', '_'.join(str(t) for t in self.tasks) +'-'+ str(datetime.now()).replace(' ',''))
         # Save experiment configuration 
         if not os.path.exists(self.save_location_dir):
             os.mkdir(self.save_location_dir)
@@ -43,11 +43,13 @@ class Trainer(object):
                 self.summary_writer.add_scalar('training/t1_acc', total_disease_acc, e)
                 self.summary_writer.add_scalar('training/t2_acc', accuracy, e)
                 self.summary_writer.add_scalar('training/t3_bleu', bleu, e)
-                val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall, total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, total_cm = self.validate(val_loader)
+                val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall,
+                total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, per_disease_bleu, total_cm = self.validate(val_loader)
                 with open(self.output_log, 'a+') as out:
                     print('Epoch: {}\tVal Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(e,val_loss, total_acc, total_d_acc, bleu), file=out)
                     print('total_topk',total_topk, file=out)
                     print('per_disease_topk', per_disease_topk, file=out)
+                    print('per_disease_bleu', per_disease_bleu, file=out)
                     print(total_cm, file=out)
                     for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
                         print(sent_gt[k], file=out)
@@ -76,6 +78,7 @@ class Trainer(object):
                             ' '.join(sent_gt[k]), e)
                     self.summary_writer.add_text('validation/sentence_pred'+str(i),
                             ' '.join(sent_pred[k]), e)
+
     def test(self, test_loader):
         results = open('predictions.csv','w')
         ind2word = {0:'Melanoma',1:'Glaucoma',2:'AMD',3:'DR',4:'Normal'}
@@ -134,11 +137,11 @@ class Trainer(object):
                accuracy += pred.eq(f_labels).sum().item()
                d_pred = F.log_softmax(disease, dim= -1).argmax(dim=-1)
                total_disease_acc += d_pred.eq(labels).sum().item()
-               preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
-               text1 = text[:, 1:].squeeze().tolist()
-               preds1 = preds.tolist()
-               tbleu, _, _ = compute_bleu(self.lang, text1, preds1)
-               bleu += tbleu
+               # preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
+               # text1 = text[:, 1:].squeeze().tolist()
+               # preds1 = preds.tolist()
+               # tbleu, _, _ = compute_bleu(self.lang, text1, preds1, labels, per_disease_bleu)
+               # bleu += tbleu
 
                if i != 0 and i % self.print_every == 0:
                   avg_loss = train_loss / self.print_every
@@ -185,6 +188,7 @@ class Trainer(object):
         k_vals = [1, 2, 3, 4, 5]
         total_topk = {k:0.0 for k in k_vals}
         per_disease_topk = defaultdict(lambda: {str(k):0.0 for k in k_vals})
+        per_disease_bleu = defaultdict(list)
         with torch.no_grad():
             for i, (_, images, labels, f_labels, text) in enumerate(val_loader):
                 batch_size = images.size(0)
@@ -231,7 +235,7 @@ class Trainer(object):
                 preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
                 text1 = text[:, 1:].squeeze().tolist()
                 preds1 = preds.tolist()
-                t_bleu, sent_gt, sent_pred = compute_bleu(self.lang, text1, preds1)
+                t_bleu, sent_gt, sent_pred = compute_bleu(self.lang, text1, preds1, labels, per_disease_bleu)
 
                 # Book-keeping
                 bleu += t_bleu
@@ -263,6 +267,8 @@ class Trainer(object):
         #   disease_f1[i] = total_f1[i]
         #   disease_precision[i] = total_precision[i]
         #   disease_recall[i] = total_recall[i]
+        for d in per_disease_bleu:
+            per_disease_bleu[d] = np.mean(per_disease_bleu[d])
 
         total_topk = {str(k) : total_topk[k] / len(val_loader) for k in k_vals}
         for d in [0,1,2,3]:
@@ -271,4 +277,4 @@ class Trainer(object):
 
         return (val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall,
                 total_precision, sent_gt, sent_pred, total_topk,
-                per_disease_topk, total_cm) 
+                per_disease_topk, per_disease_bleu, total_cm) 

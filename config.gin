@@ -1,0 +1,19 @@
+run.batch_size = 64
+run.epochs = 20
+run.val_split = 0.15
+run.num_workers = 32
+run.print_every = 100
+run.trainval_csv_path = 'trainset.csv'
+# trainval_csv_path = 'trainset_with_normal.csv'
+run.test_csv_path = 'testset_filtered.csv'
+# test_csv_path = 'trainset_filtered.csv'
+# trainval_csv_path = 'self-training-set_filtered.csv'
+run.tasks = [0, 1, 2]
+
+run.lr = 1e-3
+run.weight_decay = 1e-6
+run.momentum = 0.9
+run.dataset_dir = '/data2/fundus_images/'
+run.model_type = 'resnet50'
+
+MultiTaskModel.in_feats = 2048 # 1024 -> densenet121, 2048 -> resnet50, 512 -> resnet34

@@ -158,7 +158,7 @@ def compute_topk(topk_vals, gt, k):
         topk_acc += preds[:, i].eq(gt).sum().item()
     return (topk_acc / topk_vals.size(0))
 
-def compute_bleu(lang, text1, preds1):
+def compute_bleu(lang, text1, preds1, disease, per_disease_bleu):
     ind2word = lang.index2word
     bleu = 0
     sents_gt = []
@@ -175,6 +175,7 @@ def compute_bleu(lang, text1, preds1):
         if len(sent2) > 0 and len(sent2) < 4 and weights  == (0.25, 0.25, 0.25, 0.25):
             weights = (1 / len(sent2),) * len(sent2)
         c_bleu = sentence_bleu([sent1], sent2, weights = weights)
+        per_disease_bleu[disease[k].item()].append(c_bleu)
         sents_gt.append(sent1)
         sents_pred.append(sent2)
         bleu += c_bleu
