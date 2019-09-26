@@ -1,14 +1,15 @@
+import gin
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torchvision.models as models
 
-# from trainer import Trainer
-from trainer_small import Trainer
-# from models import MultiTaskModel
-from models import AbnormalNet
-# from dataset import CustomDatasetFromImages
+from trainer import Trainer
+# from trainer_small import Trainer
+from models import MultiTaskModel
+# from models import AbnormalNet
+from dataset import CustomDatasetFromImages
 from dataset import GradedDatasetFromImages
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -21,26 +22,14 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(seed)
 
 # from cnn_model import MnistCNNModel
+@gin.configurable
+def run(batch_size, epochs, val_split, num_workers, print_every,
+        trainval_csv_path, test_csv_path, model_type, tasks, lr, weight_decay, 
+        momentum, dataset_dir):
 
-def run():
-    batch_size = 64
-    epochs = 30
-    val_split = 0.15
-    num_workers = 32
-    print_every = 10
-    # trainval_csv_path = 'trainset.csv'
-    # test_csv_path = 'testset.csv'
-    trainval_csv_path = 'self-training-set_filtered.csv'
-    tasks = [0, 1, 2]
-
-    lr = 1e-2
-    weight_decay = 1e-6
-    momentum = 0.9
-    dataset_dir = '/data2/fundus_images/'
-
-    # trainval_from_images = CustomDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
-    # test_dataset = CustomDatasetFromImages(test_csv_path, data_dir = dataset_dir)
-    trainval_from_images = GradedDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
+    trainval_from_images = CustomDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
+    test_dataset = CustomDatasetFromImages(test_csv_path, data_dir = dataset_dir)
+    # trainval_from_images = GradedDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
 
     dset_len = len(trainval_from_images)
     val_size = int(val_split * dset_len)
@@ -63,25 +52,36 @@ def run():
                                              drop_last=True,
                                              shuffle=True, 
                                              num_workers=num_workers)
-    # test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-    #                                          batch_size=batch_size,
-    #                                          pin_memory=False,
-    #                                          drop_last=True,
-    #                                          shuffle=True,
-    #                                          num_workers=num_workers)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
+                                              batch_size=batch_size,
+                                              pin_memory=False,
+                                              drop_last=True,
+                                              shuffle=True,
+                                              num_workers=num_workers)
 
-    # lang = train_dataset.dataset.get_lang()
+    lang = train_dataset.dataset.get_lang()
 
     # model = MnistCNNModel()
-    # model = models.densenet121(pretrained=True)
+    if model_type == 'densenet121':
+        model = models.densenet121(pretrained=True)
+    elif model_type == 'resnet101':
+        model = models.resnet101(pretrained=True)
+    elif model_type == 'resnet50':
+        model = models.resnet50(pretrained=True)
+    elif model_type == 'resnet34':
+        model = models.resnet34(pretrained=True)
+    elif model_type == 'vgg19':
+        model = models.vgg19(pretrained=True)
+
     # model = models.googlenet(pretrained=True)
-    # model = models.resnet101(pretrained=True)
-    # model = models.resnet34(pretrained=True)
-    # model = models.vgg19(pretrained=True)
-    # model = MultiTaskModel(model, vocab_size=lang.n_words)
-    model = AbnormalNet() 
+    model = MultiTaskModel(model, vocab_size=lang.n_words, model_type =  model_type)
+    # model = AbnormalNet() 
+    # model.load_state_dict(torch.load('models/2019-09-25 10:30:55.310036/best_model.pt'))
     model = nn.DataParallel(model)
-    # model.load_state_dict(torch.load('best_model.pth'))
+    # All Device training
+    # model.load_state_dict(torch.load('models/2019-09-2512:29:33.758881/best_model.pt'))
+    # model.load_state_dict(torch.load('models/2019-09-26 06:39:37.468635/best_model.pt'))
+    # OISCapture
 
     print(model)
 
@@ -98,10 +98,23 @@ def run():
                                   patience=3,
                                   min_lr=1e-7,
                                   verbose=True)
-    # trainer = Trainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every =
-    #        print_every)
-    trainer = Trainer(model, optimizer, scheduler, criterion, epochs, print_every =  print_every)
+    trainer = Trainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = print_every)
+    # trainer = Trainer(model, optimizer, scheduler, criterion, epochs, print_every =  print_every)
     trainer.train(train_loader, val_loader)
+    val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall,total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, total_cm = trainer.validate(test_loader)
+    print('Test Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(val_loss, total_acc, total_d_acc, bleu))
+    print('-----------------------')
+    print(total_cm)
+    print('total_topk',total_topk)
+    print('per_disease_topk', per_disease_topk)
+    print('-----------------------')
+    for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
+        print(sent_gt[k])
+        print(sent_pred[k])
+        print('---------------------')
+    trainer.test(test_loader)
 
 if __name__ == "__main__":
+    gin.parse_config_file('config.gin')
     run()
+    gin.clear_config()

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from shutil import copyfile
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
@@ -18,15 +19,17 @@ class Trainer(object):
         self.print_every = print_every
         self.min_val_loss = min_val_loss
         self.lang = lang
-        self.save_location_dir = os.path.join('models', str(datetime.now()))
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.tasks = tasks
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.save_location_dir = os.path.join('models',str(datetime.now()).replace(' ','') + '_'.join(str(t) for t in self.tasks))
+        # Save experiment configuration 
         if not os.path.exists(self.save_location_dir):
             os.mkdir(self.save_location_dir)
+        copyfile('config.gin', os.path.join(self.save_location_dir,'config.gin'))
         self.save_path = os.path.join(self.save_location_dir, 'best_model.pt')
         self.summary_writer =  SummaryWriter(os.path.join(self.save_location_dir, 'logs'), 300)
 
-    def train(self, train_loader, val_loader, test_loader):
+    def train(self, train_loader, val_loader):
         for e in range(self.epochs):
                 self.model.train()
                 total_train_loss, total_tl1, total_tl2, total_tl3, total_disease_acc, accuracy, bleu = self.train_iteration(train_loader)
@@ -38,7 +41,17 @@ class Trainer(object):
                 self.summary_writer.add_scalar('training/t1_acc', total_disease_acc, e)
                 self.summary_writer.add_scalar('training/t2_acc', accuracy, e)
                 self.summary_writer.add_scalar('training/t3_bleu', bleu, e)
-                val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall, total_precision, sent_gt, sent_pred, total_topk, per_disease_topk = self.validate(val_loader)
+                val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall, total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, total_cm = self.validate(val_loader)
+                print('Epoch: {}\tVal Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(e,val_loss, total_acc, total_d_acc, bleu))
+                print('-----------------------')
+                print(total_cm)
+                print('total_topk',total_topk)
+                print('per_disease_topk', per_disease_topk)
+                print('-----------------------')
+                for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
+                    print(sent_gt[k])
+                    print(sent_pred[k])
+                    print('---------------------')
 
                 self.summary_writer.add_scalar('validation/val_loss', val_loss, e)
                 self.summary_writer.add_scalar('validation/t1_acc', total_d_acc, e)
@@ -62,6 +75,21 @@ class Trainer(object):
                             ' '.join(sent_gt[k]), e)
                     self.summary_writer.add_text('validation/sentence_pred'+str(i),
                             ' '.join(sent_pred[k]), e)
+    def test(self, test_loader):
+        results = open('predictions.csv','w')
+        ind2word = {0:'Melanoma',1:'Glaucoma',2:'AMD',3:'DR',4:'Normal'}
+        with torch.no_grad():
+            for i, (name, images, labels, f_labels, text) in enumerate(test_loader):
+                    batch_size = images.size(0)
+                    images = images.to(self.device)
+                    labels = labels.to(self.device)
+                    f_labels = f_labels.to(self.device)
+                    text = text.to(self.device)
+                    diseases, fine_diseases, text_pred = self.model(images, text)
+                    pred = F.log_softmax(diseases, dim= -1).argmax(dim=-1)
+                    for j in range(diseases.size(0)):
+                        results.write(name[j]+','+ind2word[labels[j].item()] +','+ind2word[pred[j].item()] +'\n')
+
 
     def train_iteration(self, train_loader):
         train_loss = 0.0
@@ -73,7 +101,7 @@ class Trainer(object):
         total_tl3 = 0
         total_train_loss = 0.0
         loss = torch.tensor(0).to(self.device)
-        for i, (images, labels, f_labels, text) in enumerate(train_loader):
+        for i, (_, images, labels, f_labels, text) in enumerate(train_loader):
                batch_size = images.size(0)
                images = images.to(self.device)
                labels = labels.to(self.device)
@@ -157,55 +185,62 @@ class Trainer(object):
         total_topk = {k:0.0 for k in k_vals}
         per_disease_topk = defaultdict(lambda: {str(k):0.0 for k in k_vals})
         losses = []
-        for i, (images, labels, f_labels, text) in enumerate(val_loader):
-            batch_size = images.size(0)
-            images = images.to(self.device)
-            labels = labels.to(self.device)
-            f_labels = f_labels.to(self.device)
-            text = text.to(self.device)
-            diseases, fine_diseases, text_pred = self.model(images, text)
-            loss1 = self.criterion(diseases, labels)
-            losses.append(loss1)
-            loss2 = self.criterion(fine_diseases, f_labels)
-            losses.append(loss2)
-            text_loss = 0.0
-            for k in range(text_pred.size(1)):
-                text_loss += self.criterion(text_pred[:,k].squeeze(), text[:,k + 1].squeeze())
-            losses.append(text_loss)
+        with torch.no_grad():
+            for i, (_, images, labels, f_labels, text) in enumerate(val_loader):
+                batch_size = images.size(0)
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+                f_labels = f_labels.to(self.device)
+                text = text.to(self.device)
+                diseases, fine_diseases, text_pred = self.model(images, text)
+                loss1 = self.criterion(diseases, labels)
+                losses.append(loss1)
+                loss2 = self.criterion(fine_diseases, f_labels)
+                losses.append(loss2)
+                text_loss = 0.0
+                for k in range(text_pred.size(1)):
+                    text_loss += self.criterion(text_pred[:,k].squeeze(), text[:,k + 1].squeeze())
+                losses.append(text_loss)
 
-            val_loss = torch.stack(losses)[self.tasks].sum()
+                val_loss = torch.stack(losses)[self.tasks].sum()
 
-            # Evaluation of P, R, F1, BLEU
-            preds = F.log_softmax(fine_diseases, dim = -1)
-            pred = preds.argmax(dim=-1)
-            d_pred = F.log_softmax(diseases, dim = -1).argmax(dim=-1)
-            total_acc += (pred.eq(f_labels).sum().item() / batch_size)
-            total_d_acc += (d_pred.eq(labels).sum().item() / batch_size)
-            acc, recall, precision, f1 = accuracy_recall_precision_f1(d_pred,
-                    labels)
+                preds = F.log_softmax(fine_diseases, dim = -1)
+                pred = preds.argmax(dim=-1)
+                d_pred = F.log_softmax(diseases, dim = -1).argmax(dim=-1)
 
-            for k in k_vals:
-                total_topk[k] += compute_topk(preds, f_labels, k)
-                for d in [0, 1, 2, 3]:
-                    mask = labels.eq(d)
-                    if mask.sum() > 0:
-                        per_disease_topk[d][str(k)] += compute_topk(preds[mask], f_labels[mask], k)
+                # Evaluation of P, R, F1, BLEU
+                total_acc += (pred.eq(f_labels).sum().item() / batch_size)
+                total_d_acc += (d_pred.eq(labels).sum().item() / batch_size)
+                acc, recall, precision, f1 = accuracy_recall_precision_f1(d_pred,
+                        labels)
 
-            total_recall += np.mean(recall)
-            total_precision += np.mean(precision)
-            total_f1 += np.mean(f1)
-            preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
-            text1 = text[:, 1:].squeeze().tolist()
-            preds1 = preds.tolist()
-            t_bleu, sent_gt, sent_pred = compute_bleu(self.lang, text1, preds1)
+                for k in k_vals:
+                    total_topk[k] += compute_topk(preds, f_labels, k)
+                    for d in [0, 1, 2, 3]:
+                        mask = labels.eq(d)
+                        if mask.sum() > 0:
+                            per_disease_topk[d][str(k)] += compute_topk(preds[mask], f_labels[mask], k)
 
-            # Book-keeping
-            bleu += t_bleu
-            total_l1 += loss1.item()
-            total_l2 += loss2.item()
-            total_l3 += text_loss.item()
-            # cm = calculate_confusion_matrix(pred, labels)
-            # total_cm += (cm / batch_size)
+                total_recall += np.mean(recall)
+                total_precision += np.mean(precision)
+                total_f1 += np.mean(f1)
+                preds = torch.argmax(F.log_softmax(text_pred,dim=-1), dim=-1)
+                text1 = text[:, 1:].squeeze().tolist()
+                preds1 = preds.tolist()
+                t_bleu, sent_gt, sent_pred = compute_bleu(self.lang, text1, preds1)
+
+                # Book-keeping
+                bleu += t_bleu
+                total_l1 += loss1.item()
+                total_l2 += loss2.item()
+                total_l3 += text_loss.item()
+                cm = calculate_confusion_matrix(d_pred, labels)
+                try:
+                    total_cm += (cm / batch_size)
+                except:
+                    print("Error occured for this CM")
+                    print(cm / batch_size)
+                    pass
         bleu = bleu / (len(val_loader))
         val_loss = val_loss / len(val_loader)
         total_l1 /= len(val_loader)
@@ -216,7 +251,7 @@ class Trainer(object):
         total_f1 = total_f1 / len(val_loader)
         total_precision = total_precision / len(val_loader)
         total_recall = total_recall / len(val_loader)
-        # total_cm = total_cm / len(val_loader)
+        total_cm = total_cm / len(val_loader)
 
         self.scheduler.step(val_loss)
         if val_loss <= self.min_val_loss:
@@ -237,8 +272,6 @@ class Trainer(object):
             for k in k_vals:
                 per_disease_topk[d][str(k)] = per_disease_topk[d][str(k)] / len(val_loader)
 
-        # print('-----------CM------------')
-        # print(total_cm)
-        # print('-----------------------')
         return (val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall,
-                total_precision, sent_gt, sent_pred, total_topk, per_disease_topk) 
+                total_precision, sent_gt, sent_pred, total_topk,
+                per_disease_topk, total_cm) 

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
-
+import tqdm
 import os
 from datetime import datetime
 from collections import defaultdict
@@ -42,6 +42,22 @@ class Trainer(object):
                 print('Val Loss',val_loss, 'total_d_acc',total_d_acc, 'F1', total_f1, 'R', total_recall,'P', total_precision)
                 print(total_cm)
 
+    def test(self, test_loader):
+        results = open('self_trained_labels.csv','w')
+        self.model.eval()
+        ind2disease = {0:'Disease',1:'Normal'}
+        ind2disease2 = {0:'Melanoma' , 1: 'Glaucoma', 2: 'AMD', 3:'DR'}
+        for i, data in tqdm.tqdm(enumerate(test_loader)):
+               image_name = data[0]
+               images = data[1]
+               labels = data[2]
+               batch_size = images.size(0)
+               images = images.to(self.device)
+               disease = self.model(images)
+               d_pred = F.log_softmax(disease, dim= -1).argmax(dim=-1)
+               probs, _ = F.softmax(disease, dim=-1).max(dim=-1)
+               for j in range(d_pred.size(0)):
+                   results.write(image_name[j]+','+ '{:.8f}'.format(probs[j].item()) +',' + ind2disease2[labels[j].item()] +','+ind2disease[d_pred[j].item()]+'\n')
 
     def train_iteration(self, train_loader):
         train_loss = 0.0

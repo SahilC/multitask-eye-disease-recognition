@@ -1,3 +1,4 @@
+import gin
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,14 +6,14 @@ import torch.nn.functional as F
 import random
 
 class LanguageModel(nn.Module):
-    def __init__(self, vocab_size = 193, embed_size = 256, hidden_size = 512,
+    def __init__(self, vocab_size = 193, embed_size = 256, inp_size = 1024, hidden_size = 512,
             num_layers = 1, dropout_p = 0.1):
         super(LanguageModel, self).__init__()
         self.hidden_size = hidden_size
         self.embed_size = embed_size
         self.dropout = nn.Dropout(dropout_p)
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=2)
-        self.project = nn.Linear(512, hidden_size)
+        self.project = nn.Linear(inp_size, hidden_size)
         self.gru = nn.GRU(input_size=embed_size, hidden_size=hidden_size,
                 num_layers=num_layers, batch_first=True)
         # self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, batch_first=True)
@@ -61,25 +62,29 @@ class AbnormalNet(nn.Module):
 
     def forward(self, x):
         return self.conv(x).squeeze()
-    
-class MultiTaskModel(nn.Module):
-    def __init__(self, model, vocab_size):
-        super(MultiTaskModel, self).__init__()
-        self.feature_extract = model.features
-        # self.feature_extract = torch.nn.Sequential(*list(model.children())[:-1])
 
-        self.disease_classifier = nn.Sequential(nn.Linear(512, 512),
-                nn.ReLU(), nn.Linear(512, 4))
-        self.fine_disease_classifier = nn.Sequential(nn.Linear(512, 512),
-                nn.ReLU(), nn.Linear(512, 320))
-        self.language_classifier = LanguageModel(vocab_size = vocab_size)
+@gin.configurable
+class MultiTaskModel(nn.Module):
+    def __init__(self, model, vocab_size, model_type = 'densenet121', in_feats = gin.REQUIRED):
+        super(MultiTaskModel, self).__init__()
+        self.model_type = model_type
+        if self.model_type == 'densenet121':
+            self.feature_extract = model.features
+        else:
+            self.feature_extract = torch.nn.Sequential(*list(model.children())[:-1])
+
+        self.disease_classifier = nn.Sequential(nn.Linear(in_feats, 512),
+                nn.ReLU(), nn.Linear(512, 5))
+        self.fine_disease_classifier = nn.Sequential(nn.Linear(in_feats, 512),
+                nn.ReLU(), nn.Linear(512, 321))
+        self.language_classifier = LanguageModel(inp_size = in_feats, vocab_size = vocab_size)
 
     def forward(self, data,text):
         features = self.feature_extract(data).squeeze()
-        # out = features
         out = F.relu(features)
-        out = F.adaptive_avg_pool2d(out, (1, 1))
-        out = torch.flatten(out, 1)
+        if self.model_type == 'densenet121':
+            out = F.adaptive_avg_pool2d(out, (1, 1))
+            out = torch.flatten(out, 1)
 
         return (self.disease_classifier(out),
                 self.fine_disease_classifier(out),
