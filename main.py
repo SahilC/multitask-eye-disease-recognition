@@ -119,9 +119,10 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
 
 if __name__ == "__main__":
     task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
-    for i, t in task_configs:
+    for i, t in enumerate(task_configs):
+        print("Running", t)
         gin.parse_config_file('config.gin')
-        gin.bind_parameter('run.tasks', task_config[i])
+        gin.bind_parameter('run.tasks', task_configs[i])
         run()
         gin.clear_config()
 
