@@ -9,7 +9,14 @@ Work done in Microsoft AI Research.
 
 Run the code with:- 
 ```
-python dataset.py
+python main.py
+```
+
+Configuration can be modified in 
+
+
+```
+config.gin
 ```
 
 
