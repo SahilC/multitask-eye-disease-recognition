@@ -43,8 +43,7 @@ class Trainer(object):
                 self.summary_writer.add_scalar('training/t1_acc', total_disease_acc, e)
                 self.summary_writer.add_scalar('training/t2_acc', accuracy, e)
                 self.summary_writer.add_scalar('training/t3_bleu', bleu, e)
-                val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall,
-                total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, per_disease_bleu, total_cm = self.validate(val_loader)
+                val_loss, total_d_acc, total_acc, bleu, total_f1, total_recall, total_precision, sent_gt, sent_pred, total_topk, per_disease_topk, per_disease_bleu, total_cm = self.validate(val_loader)
                 with open(self.output_log, 'a+') as out:
                     print('Epoch: {}\tVal Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(e,val_loss, total_acc, total_d_acc, bleu), file=out)
                     print('total_topk',total_topk, file=out)
