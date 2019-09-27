@@ -30,7 +30,9 @@ class CustomDatasetFromImages(Dataset):
                 i, j in list(csv.reader(open('labels2.txt', 'r'), delimiter='\t'))}
 
         self.to_tensor = transforms.Compose([
-                                transforms.Resize((224, 224)),
+                                transforms.Resize((64, 64)),
+                                transforms.RandomHorizontalFlip(p=0.5),
+                                transforms.RandomVerticalFlip(p=0.5),
                                 transforms.ToTensor(),
                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         self.data_info = pd.read_csv(csv_path, header=None)
@@ -70,16 +72,18 @@ class GradedDatasetFromImages(Dataset):
             img_path (string): path to the folder where images are
             transform: pytorch transforms for transforms and tensor conversion
         """
-        self.label2idx1 = {'melanoma':0, 'glaucoma':0, 'amd':0, 'diabetic retinopathy':0, 'Normal':1}
+        self.label2idx1 = {'melanoma':0, 'glaucoma':1, 'amd':2, 'diabetic retinopathy':3, 'normal':4}
 
         self.to_tensor = transforms.Compose([
                                 transforms.Resize((64, 64)),
+                                transforms.RandomHorizontalFlip(p=0.5),
+                                transforms.RandomVerticalFlip(p=0.5),
                                 transforms.ToTensor(),
                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
         self.data_info = pd.read_csv(csv_path, header=None)
         self.image_arr = np.asarray([os.path.join(data_dir, i.replace('%','')) for i in self.data_info.iloc[:,0]])
-        self.label_arr1 = [self.label2idx1[i] for i in np.asarray(self.data_info.iloc[:, -2])]
+        self.label_arr1 = [self.label2idx1[i.lower()] for i in np.asarray(self.data_info.iloc[:, -2])]
         self.data_len = len(self.data_info.index)
 
     def __getitem__(self, index):
