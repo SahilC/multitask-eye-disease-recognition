@@ -58,7 +58,7 @@ class AbnormalNet(nn.Module):
                                    nn.PReLU(),
                                    nn.Conv2d(64, 64, (4, 4), 2, 1), # 16 -> 8
                                    nn.PReLU(),
-                                   nn.Conv2d(64, 2, (8, 8), 1, 0)) 
+                                   nn.Conv2d(64, 5, (8, 8), 1, 0))
 
     def forward(self, x):
         return self.conv(x).squeeze()
