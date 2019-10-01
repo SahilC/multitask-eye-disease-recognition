@@ -300,9 +300,9 @@ class MultiTaskTrainer(BaseTrainer):
 
 
 class SmallTrainer(BaseTrainer):
-    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100):
+    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100, trainset_split = 0.85):
         super(SmallTrainer, self).__init__(self, model, optimizer, scheduler, criterion, print_every, min_val_loss)
-        self.save_location_dir = os.path.join('models', str(datetime.now()))
+        self.save_location_dir = os.path.join('models', str(trainset_split)+'-'+str(datetime.now()))
         self.init_saves()
 
     def train(self, train_loader, val_loader):

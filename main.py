@@ -28,17 +28,19 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
         momentum, dataset_dir):
 
     # trainval_from_images = CustomDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
-    test_dataset = CustomDatasetFromImages(test_csv_path, data_dir = dataset_dir)
+    # test_dataset = CustomDatasetFromImages(test_csv_path, data_dir = dataset_dir)
     trainval_from_images = GradedDatasetFromImages(trainval_csv_path, data_dir = dataset_dir)
 
     dset_len = len(trainval_from_images)
     val_size = int(val_split * dset_len)
-    train_size = dset_len - val_size
+    test_size = int(0.15 * dset_len)
+    train_size = dset_len - val_size - test_size
 
 
-    train_dataset, val_dataset = torch.utils.data.random_split(trainval_from_images,
+    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(trainval_from_images,
                                                                [train_size,
-                                                                val_size])
+                                                                val_size,
+                                                                test_size])
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                batch_size=batch_size,
@@ -101,10 +103,12 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
                                   min_lr=1e-7,
                                   verbose=True)
     # trainer = MultiTaskTrainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = print_every)
-    trainer = SmallTrainer(model, optimizer, scheduler, criterion, epochs, print_every =  print_every)
+    trainset_percent = (1 - val_split - 0.15)
+    trainer = SmallTrainer(model, optimizer, scheduler, criterion, epochs,
+            print_every =  print_every, trainset = trainset_percent)
     trainer.train(train_loader, val_loader)
 
-    # model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt'))
+    model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt'))
 
     # val_loss, total_d_acc, total_acc, bleu, total_f1,total_recall, total_precision, sent_gt, sent_pred, total_topk,per_disease_topk, per_disease_bleu, total_cm = trainer.validate(test_loader)
     # with open(trainer.output_log, 'a+') as out:
@@ -117,13 +121,19 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
     #        print(sent_gt[k], file=out)
     #        print(sent_pred[k], file=out)
     #        print('---------------------', file=out)
-    trainer.test(test_loader)
+    # trainer.test(test_loader)
+    val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = trainer.validate(test_loader)
+    with open(trainer.output_log, 'a+') as out:
+        print('Test Loss',val_loss,'total_d_acc',total_d_acc, 'F1', total_f1, 'R', total_recall,'P', total_precision, file=out)
+        print(total_cm, file=out)
+
+    # trainer.test(test_loader)
 
 if __name__ == "__main__":
     # task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
     task_configs = [ 0.15, 0.25, 0.4, 0.55, 0.7, 0.85]
     for i, t in enumerate(task_configs):
-        print("Running", t)
+        print("Running", (1 - t - 0.15))
     # gin.parse_config_file('config.gin')
         gin.parse_config_file('config_small.gin')
         gin.bind_parameter('run.val_split', task_configs[i])
