@@ -1,3 +1,4 @@
+import gin
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -21,6 +22,8 @@ class Trainer(object):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if not os.path.exists(self.save_location_dir):
             os.mkdir(self.save_location_dir)
+        with open(os.path.join(self.save_location_dir,'config.gin'), 'w') as conf:
+            conf.write(gin.operative_config_str())
         self.save_path = os.path.join(self.save_location_dir, 'best_model.pt')
         self.summary_writer =  SummaryWriter(os.path.join(self.save_location_dir, 'logs'), 300)
 
@@ -43,10 +46,12 @@ class Trainer(object):
                 print(total_cm)
 
     def test(self, test_loader):
-        results = open('self_trained_labels.csv','w')
+        results = open('self_trained_extra_labels.csv','w')
         self.model.eval()
-        ind2disease = {0:'Disease',1:'Normal'}
-        ind2disease2 = {0:'Melanoma' , 1: 'Glaucoma', 2: 'AMD', 3:'DR'}
+        # ind2disease = {0:'Disease',1:'Normal'}
+        ind2disease = {0:'Melanoma' , 1: 'Glaucoma', 2: 'AMD', 3:'DR', 4:'Normal'}
+        # ind2disease2 = {0:'Melanoma' , 1: 'Glaucoma', 2: 'AMD', 3:'DR'}
+        ind2disease2 = {0:'not applicable' , 1: 'not classifed', 2: 'diabetes no retinopathy'}
         for i, data in tqdm.tqdm(enumerate(test_loader)):
                image_name = data[0]
                images = data[1]
@@ -119,7 +124,7 @@ class Trainer(object):
             diseases = self.model(images)
             loss1 = self.criterion(diseases, labels)
 
-            val_loss = loss1
+            val_loss += loss1
 
             # Evaluation of P, R, F1, BLEU
             d_pred = F.log_softmax(diseases, dim = -1).argmax(dim=-1)

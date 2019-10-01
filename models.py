@@ -52,13 +52,17 @@ class LanguageModel(nn.Module):
 class AbnormalNet(nn.Module):
     def __init__(self):
         super(AbnormalNet, self).__init__()
-        self.conv = nn.Sequential(nn.Conv2d(3, 32, (4, 4), 2, 1), # 64 -> 32
-                                   nn.PReLU(),
-                                   nn.Conv2d(32, 64, (4, 4), 2,1), # 32 -> 16
-                                   nn.PReLU(),
-                                   nn.Conv2d(64, 64, (4, 4), 2, 1), # 16 -> 8
-                                   nn.PReLU(),
-                                   nn.Conv2d(64, 5, (8, 8), 1, 0))
+        self.conv = nn.Sequential(nn.Conv2d(3, 32, (4, 4), 2, 1), # 224 -> 112
+                                   nn.ReLU(),
+                                   nn.Conv2d(32, 64, (4, 4), 2,1), # 112 -> 56
+                                   nn.ReLU(),
+                                   nn.Conv2d(64, 128, (4, 4), 2, 1), # 56 -> 28
+                                   nn.ReLU(),
+                                   nn.Conv2d(128, 128, (4, 4), 2, 1), # 28 -> 14
+                                   nn.ReLU(),
+                                   nn.Conv2d(128, 64, (4, 4), 2, 1), # 14 -> 7
+                                   nn.ReLU(),
+                                   nn.Conv2d(64, 5, (7, 7), 1, 0))
 
     def forward(self, x):
         return self.conv(x).squeeze()

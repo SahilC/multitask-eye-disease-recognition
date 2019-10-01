@@ -12,15 +12,15 @@ run.trainval_csv_path = 'merged_combined_30_sept.csv'
 # run.test_csv_path = 'extra_normal_unclassified.csv'
 # run.trainval_csv_path = 'trainset.csv'
 # trainval_csv_path = 'trainset_with_normal.csv'
-test_csv_path = 'trainset_filtered.csv'
+run.test_csv_path = 'trainset_filtered.csv'
 # trainval_csv_path = 'self-training-set_filtered.csv'
 # run.trainval_csv_path = 'self-training_images.csv'
 run.tasks = [0, 1, 2]
 
-run.lr = 1e-3
+run.lr = 1e-2
 run.weight_decay = 1e-6
 run.momentum = 0.9
 run.dataset_dir = '/data2/fundus_images/'
 run.model_type = 'resnet50'
 
-MultiTaskModel.in_feats = 2048 # 1024 -> densenet121, 2048 -> resnet50, 512 -> resnet34
+# MultiTaskModel.in_feats = 2048 # 1024 -> densenet121, 2048 -> resnet50, 512 -> resnet34

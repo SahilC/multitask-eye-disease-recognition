@@ -23,14 +23,15 @@ class CustomDatasetFromImages(Dataset):
             img_path (string): path to the folder where images are
             transform: pytorch transforms for transforms and tensor conversion
         """
-        self.label2idx1 = {'Melanoma':0, 'Glaucoma':1, 'AMD':2, 'Diabetic Retinopathy':3, ' normal':4}
+        self.label2idx1 = {'melanoma':0, 'glaucoma':1, 'amd':2, 'diabetic retinopathy':3, 'normal':4}
+        # self.label2idx1 = {'not applicable':0, 'not classified':1, 'diabetes no retinopathy':2}
             # 541 classes
         # self.label2idx2 = {j.strip().lower(): (int(i.strip().lower()) -1) for i, j in list(csv.reader(open('labels.txt', 'r'), delimiter='\t'))}
         self.label2idx2 = {j.strip().lower(): (int(i.strip().lower()) - 1) for
                 i, j in list(csv.reader(open('labels2.txt', 'r'), delimiter='\t'))}
 
         self.to_tensor = transforms.Compose([
-                                transforms.Resize((64, 64)),
+                                transforms.Resize((224, 224)),
                                 transforms.RandomHorizontalFlip(p=0.5),
                                 transforms.RandomVerticalFlip(p=0.5),
                                 transforms.ToTensor(),
@@ -38,7 +39,7 @@ class CustomDatasetFromImages(Dataset):
         self.data_info = pd.read_csv(csv_path, header=None)
         # change to -4?
         self.image_arr =  np.asarray([os.path.join(data_dir,i.split('/')[-1].replace('%','')) for  i in self.data_info.iloc[:,0]])
-        self.label_arr1 = [self.label2idx1[i] for i in np.asarray(self.data_info.iloc[:, 1])]
+        self.label_arr1 = [self.label2idx1[i.lower()] for i in np.asarray(self.data_info.iloc[:, 1])]
         self.label_arr2 = []
         self.lang, self.pairs = readLangs(self.data_info.iloc[:, 2], 15)
 
@@ -75,7 +76,7 @@ class GradedDatasetFromImages(Dataset):
         self.label2idx1 = {'melanoma':0, 'glaucoma':1, 'amd':2, 'diabetic retinopathy':3, 'normal':4}
 
         self.to_tensor = transforms.Compose([
-                                transforms.Resize((64, 64)),
+                                transforms.Resize((224, 224)),
                                 transforms.RandomHorizontalFlip(p=0.5),
                                 transforms.RandomVerticalFlip(p=0.5),
                                 transforms.ToTensor(),
@@ -83,7 +84,7 @@ class GradedDatasetFromImages(Dataset):
 
         self.data_info = pd.read_csv(csv_path, header=None)
         self.image_arr = np.asarray([os.path.join(data_dir, i.replace('%','')) for i in self.data_info.iloc[:,0]])
-        self.label_arr1 = [self.label2idx1[i.lower()] for i in np.asarray(self.data_info.iloc[:, -2])]
+        self.label_arr1 = [self.label2idx1[i.lower()] for i in np.asarray(self.data_info.iloc[:, 1])]
         self.data_len = len(self.data_info.index)
 
     def __getitem__(self, index):
