@@ -8,9 +8,8 @@ import os
 from datetime import datetime
 from collections import defaultdict
 from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1, calculate_confusion_matrix
-
-class Trainer(object):
-    def __init__(self, model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = 100, min_val_loss = 100):
+class BaseTrainer(object):
+    def __init__(self, model, optimizer, scheduler, crierion, epochs, print_every, min_val_loss = 100):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -18,11 +17,11 @@ class Trainer(object):
         self.criterion = criterion
         self.print_every = print_every
         self.min_val_loss = min_val_loss
-        self.lang = lang
-        self.tasks = tasks
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.save_location_dir = os.path.join('models', '_'.join(str(t) for t in self.tasks) +'-'+ str(datetime.now()).replace(' ',''))
         # Save experiment configuration 
+        self.save_location_dir = os.path.join('models', str(datetime.now()).replace(' ',''))
+
+    def init_saves(self):
         if not os.path.exists(self.save_location_dir):
             os.mkdir(self.save_location_dir)
         with open(os.path.join(self.save_location_dir,'config.gin'), 'w') as conf:
@@ -30,6 +29,27 @@ class Trainer(object):
         self.output_log = os.path.join(self.save_location_dir,'output_log.txt')
         self.save_path = os.path.join(self.save_location_dir, 'best_model.pt')
         self.summary_writer =  SummaryWriter(os.path.join(self.save_location_dir, 'logs'), 300)
+
+    def train(self, train_loader, val_loader):
+        raise NotImplementedError
+
+    def train_iteration(self, train_loader, val_loader):
+        raise NotImplementedError
+
+    def validate(self, train_loader, val_loader):
+        raise NotImplementedError
+
+    def test(self, test_loader):
+        raise NotImplementedError
+
+
+class Trainer(BaseTrainer):
+    def __init__(self, model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = 100, min_val_loss = 100):
+        super(Trainer, self).__init__(self, model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
+        self.lang = lang
+        self.tasks = tasks
+        self.save_location_dir = os.path.join('models', '_'.join(str(t) for t in self.tasks) +'-'+ str(datetime.now()).replace(' ',''))
+        self.init_saves()
 
     def train(self, train_loader, val_loader):
         for e in range(self.epochs):
