@@ -9,7 +9,7 @@ from datetime import datetime
 from collections import defaultdict
 from utils import compute_bleu, compute_topk, accuracy_recall_precision_f1, calculate_confusion_matrix
 class BaseTrainer(object):
-    def __init__(self, model, optimizer, scheduler, crierion, epochs, print_every, min_val_loss = 100):
+    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss = 100):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
