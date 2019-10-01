@@ -105,10 +105,10 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
     # trainer = MultiTaskTrainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = print_every)
     trainset_percent = (1 - val_split - 0.15)
     trainer = SmallTrainer(model, optimizer, scheduler, criterion, epochs,
-            print_every =  print_every, trainset = trainset_percent)
+            print_every =  print_every, trainset_split = trainset_percent)
     trainer.train(train_loader, val_loader)
 
-    model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt'))
+    model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt')))
 
     # val_loss, total_d_acc, total_acc, bleu, total_f1,total_recall, total_precision, sent_gt, sent_pred, total_topk,per_disease_topk, per_disease_bleu, total_cm = trainer.validate(test_loader)
     # with open(trainer.output_log, 'a+') as out:
@@ -122,7 +122,9 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
     #        print(sent_pred[k], file=out)
     #        print('---------------------', file=out)
     # trainer.test(test_loader)
+
     val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = trainer.validate(test_loader)
+
     with open(trainer.output_log, 'a+') as out:
         print('Test Loss',val_loss,'total_d_acc',total_d_acc, 'F1', total_f1, 'R', total_recall,'P', total_precision, file=out)
         print(total_cm, file=out)

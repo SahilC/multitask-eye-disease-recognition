@@ -45,7 +45,7 @@ class BaseTrainer(object):
 
 class MultiTaskTrainer(BaseTrainer):
     def __init__(self, model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = 100, min_val_loss = 100):
-        super(Trainer, self).__init__(self, model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
+        super(Trainer, self).__init__(model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
         self.lang = lang
         self.tasks = tasks
         self.save_location_dir = os.path.join('models', '_'.join(str(t) for t in self.tasks) +'-'+ str(datetime.now()).replace(' ',''))
@@ -301,7 +301,7 @@ class MultiTaskTrainer(BaseTrainer):
 
 class SmallTrainer(BaseTrainer):
     def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100, trainset_split = 0.85):
-        super(SmallTrainer, self).__init__(self, model, optimizer, scheduler, criterion, print_every, min_val_loss)
+        super(SmallTrainer, self).__init__(model, optimizer, scheduler, criterion, print_every, min_val_loss)
         self.save_location_dir = os.path.join('models', str(trainset_split)+'-'+str(datetime.now()))
         self.init_saves()
 
