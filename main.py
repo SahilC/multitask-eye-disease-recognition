@@ -6,8 +6,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-# from trainer import Trainer
-from trainer_small import Trainer
+from trainer import MultiTaskTrainer, SmallTrainer
 from models import MultiTaskModel
 from models import AbnormalNet
 from dataset import CustomDatasetFromImages
@@ -101,8 +100,8 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
                                   patience=3,
                                   min_lr=1e-7,
                                   verbose=True)
-    # trainer = Trainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = print_every)
-    trainer = Trainer(model, optimizer, scheduler, criterion, epochs, print_every =  print_every)
+    # trainer = MultiTaskTrainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = print_every)
+    trainer = SmallTrainer(model, optimizer, scheduler, criterion, epochs, print_every =  print_every)
     trainer.train(train_loader, val_loader)
 
     # model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt'))
@@ -122,11 +121,12 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
 
 if __name__ == "__main__":
     # task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
-    # for i, t in enumerate(task_configs):
-    # print("Running", t)
+    task_configs = [ 0.15, 0.25, 0.4, 0.55, 0.7, 0.85]
+    for i, t in enumerate(task_configs):
+        print("Running", t)
     # gin.parse_config_file('config.gin')
-    gin.parse_config_file('config_small.gin')
-    # gin.bind_parameter('run.tasks', task_configs[i])
-    run()
-    gin.clear_config()
+        gin.parse_config_file('config_small.gin')
+        gin.bind_parameter('run.val_split', task_configs[i])
+        run()
+        gin.clear_config()
 
