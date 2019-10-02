@@ -133,7 +133,8 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
 
 if __name__ == "__main__":
     # task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
-    task_configs = [ 0.15, 0.25, 0.4, 0.55, 0.7, 0.85]
+    # task_configs = [0.4, 0.55, 0.7, 0.85]
+    task_configs = [0.05]
     for i, t in enumerate(task_configs):
         print("Running", (1 - t - 0.15))
     # gin.parse_config_file('config.gin')

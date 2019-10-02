@@ -307,13 +307,13 @@ class SmallTrainer(BaseTrainer):
 
     def train(self, train_loader, val_loader):
         for e in range(self.epochs):
-                print(self.epochs)
                 self.model.train()
                 total_train_loss, accuracy = self.train_iteration(train_loader)
                 print("Epoch", e)
                 self.summary_writer.add_scalar('training/total_train_loss', total_train_loss, e)
                 self.summary_writer.add_scalar('training/acc', accuracy, e)
-                val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = self.validate(val_loader)
+                with torch.no_grad():
+                    val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = self.validate(val_loader)
 
                 self.summary_writer.add_scalar('validation/val_loss', val_loss, e)
                 self.summary_writer.add_scalar('validation/t1_acc', total_d_acc, e)
@@ -419,7 +419,11 @@ class SmallTrainer(BaseTrainer):
             total_f1 += np.mean(f1)
 
             cm = calculate_confusion_matrix(d_pred, labels)
-            total_cm += (cm / batch_size)
+            try:
+                total_cm += (cm / batch_size)
+            except:
+                print("error occured for this CM")
+                print(cm / batch_size)
         val_loss = val_loss / len(val_loader)
         total_d_acc = total_d_acc / len(val_loader)
         total_f1 = total_f1 / len(val_loader)
