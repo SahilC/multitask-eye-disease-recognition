@@ -48,11 +48,13 @@ class LanguageModel(nn.Module):
 
         return torch.cat(preds, 1)
 
-
+@gin.configurable 
 class AbnormalNet(nn.Module):
-    def __init__(self):
+    def __init__(self, model_type, model = None):
         super(AbnormalNet, self).__init__()
-        self.conv = nn.Sequential(nn.Conv2d(3, 32, (4, 4), 2, 1), # 224 -> 112
+        self.model_type = model_type
+        if model_type == 'self':
+            self.conv = nn.Sequential(nn.Conv2d(3, 32, (4, 4), 2, 1), # 224 -> 112
                                    nn.ReLU(),
                                    nn.Conv2d(32, 64, (4, 4), 2,1), # 112 -> 56
                                    nn.ReLU(),
@@ -63,9 +65,15 @@ class AbnormalNet(nn.Module):
                                    nn.Conv2d(128, 64, (4, 4), 2, 1), # 14 -> 7
                                    nn.ReLU(),
                                    nn.Conv2d(64, 5, (7, 7), 1, 0))
+        else:
+            self.conv = torch.nn.Sequential(*list(model.children())[:-1])
+            self.lin = nn.Linear(2048, 5)
 
     def forward(self, x):
-        return self.conv(x).squeeze()
+        out = self.conv(x).squeeze()
+        if self.model_type != 'self':
+            out = self.lin(F.relu(out))
+        return out
 
 @gin.configurable
 class MultiTaskModel(nn.Module):
