@@ -49,6 +49,58 @@ class LanguageModel(nn.Module):
         return torch.cat(preds, 1)
 
 @gin.configurable 
+class AutoEncoder(nn.Module):
+    def __init__(self, model_type, model = None):
+        super(AutoEncoder, self).__init__()
+        self.model_type = model_type
+        if model_type == 'self':
+            self.conv = nn.Sequential(nn.Conv2d(3, 32, (4, 4), 2, 1), # 224 -> 112
+                                   nn.ReLU(),
+                                   nn.Conv2d(32, 64, (4, 4), 2,1), # 112 -> 56
+                                   nn.ReLU(),
+                                   nn.Conv2d(64, 128, (4, 4), 2, 1), # 56 -> 28
+                                   nn.ReLU(),
+                                   nn.Conv2d(128, 128, (4, 4), 2, 1), # 28 -> 14
+                                   nn.ReLU(),
+                                   nn.Conv2d(128, 64, (4, 4), 2, 1), # 14 -> 7
+                                   nn.ReLU(),
+                                   nn.Conv2d(64, 5, (7, 7), 1, 0))
+        else:
+            self.conv = torch.nn.Sequential(*list(model.children())[:-1])
+            self.lin = nn.Linear(2048, 256)
+            self.deconv = nn.Sequential(
+                    nn.ConvTranspose2d(256, 256, 7, 1, 0),
+                    nn.BatchNorm2d(256),
+                    nn.ReLU(),
+                    # state size: (ngf * 8) x 4 x 4
+                    nn.ConvTranspose2d(256, 256, 4, 2, 1, bias=False),
+                    nn.BatchNorm2d(256),
+                    nn.ReLU(),
+                    # state size: ngf x 32 x 32
+                    nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),
+                    nn.BatchNorm2d(128),
+                    nn.ReLU(),
+                    # state size: (ngf * 4) x 8 x 8
+                    nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),
+                    nn.BatchNorm2d(64),
+                    nn.ReLU(),
+                    # state size: (ngf * 2) x 16 x 16
+                    nn.ConvTranspose2d(64, 32, 4, 2, 1, bias=False),
+                    nn.BatchNorm2d(32),
+                    nn.ReLU(),
+                    # state size: ngf x 32 x 32
+                    nn.ConvTranspose2d(32, 3, 4, 2, 1),
+                    nn.Tanh()
+           )
+
+    def forward(self, x):
+        out = self.conv(x).squeeze()
+        if self.model_type != 'self':
+            out = self.lin(F.relu(out))
+        out = self.deconv(out.view(-1, out.size(1), 1, 1))
+        return out
+
+@gin.configurable 
 class AbnormalNet(nn.Module):
     def __init__(self, model_type, model = None):
         super(AbnormalNet, self).__init__()

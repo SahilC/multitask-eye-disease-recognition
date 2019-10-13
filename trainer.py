@@ -299,6 +299,7 @@ class MultiTaskTrainer(BaseTrainer):
                 per_disease_topk, per_disease_bleu, total_cm)
 
 
+
 class SmallTrainer(BaseTrainer):
     def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100, trainset_split = 0.85):
         super(SmallTrainer, self).__init__(model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
@@ -447,7 +448,112 @@ class SmallTrainer(BaseTrainer):
         #   disease_recall[i] = total_recall[i]
 
         return (val_loss, total_d_acc, total_f1, total_recall,
-                total_precision, total_cm) 
+                total_precision, total_cm)
+
+class AutoTrainer(BaseTrainer):
+    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100, trainset_split = 0.85):
+        super(SmallTrainer, self).__init__(model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
+        self.save_location_dir = os.path.join('small_models', str(trainset_split)+'-'+str(datetime.now()))
+        self.init_saves()
+
+    def train(self, train_loader, val_loader):
+        for e in range(self.epochs):
+                self.model.train()
+                total_train_loss = self.train_iteration(train_loader)
+                print("Epoch", e)
+                self.summary_writer.add_scalar('training/total_train_loss', total_train_loss, e)
+                with torch.no_grad():
+                    val_loss = self.validate(val_loader)
+
+                self.summary_writer.add_scalar('validation/val_loss', val_loss, e)
+                with open(self.output_log, 'a+') as out: 
+                    print('Val Loss',val_loss, file=out)
+
+    def test(self, test_loader):
+        results = open('self_trained_extra_labels.csv','w')
+        self.model.eval()
+        # ind2disease = {0:'Disease',1:'Normal'}
+        ind2disease = {0:'Melanoma' , 1: 'Glaucoma', 2: 'AMD', 3:'DR', 4:'Normal'}
+        # ind2disease2 = {0:'Melanoma' , 1: 'Glaucoma', 2: 'AMD', 3:'DR'}
+        ind2disease2 = {0:'not applicable' , 1: 'not classifed', 2: 'diabetes no retinopathy'}
+        for i, data in tqdm.tqdm(enumerate(test_loader)):
+               image_name = data[0]
+               images = data[1]
+               labels = data[2]
+               batch_size = images.size(0)
+               images = images.to(self.device)
+               disease = self.model(images)
+               d_pred = F.log_softmax(disease, dim= -1).argmax(dim=-1)
+               probs, _ = F.softmax(disease, dim=-1).max(dim=-1)
+               for j in range(d_pred.size(0)):
+                   results.write(image_name[j]+','+ '{:.8f}'.format(probs[j].item()) +',' + ind2disease2[labels[j].item()] +','+ind2disease[d_pred[j].item()]+'\n')
+
+    def train_iteration(self, train_loader):
+        train_loss = 0.0
+        accuracy = 0.0
+        total_disease_acc = 0.0
+        total_train_loss = 0.0
+        for i, (images, labels) in enumerate(train_loader):
+               batch_size = images.size(0)
+               images = images.to(self.device)
+               labels = labels.to(self.device)
+               
+               self.optimizer.zero_grad()
+               disease = self.model(images)
+               loss = self.criterion(disease, labels)
+
+               loss.backward()
+               self.optimizer.step()
+
+               train_loss += loss.item()
+               total_train_loss += loss.item()
+
+
+               if i != 0 and i % self.print_every == 0:
+                  avg_loss = train_loss / self.print_every
+
+                  print('Iter:{}\tTraining Loss:{:.8f}'.format(i,
+                      avg_loss))
+
+                  train_loss = 0.0
+        return total_train_loss
+
+    def validate(self, val_loader, epoch = 0):
+        self.model.eval()
+        val_loss = 0.0
+        total_acc = 0.0
+        total_recall = 0.0
+        total_precision = 0.0
+        total_f1 = 0.0
+        total_cm = 0
+        total_d_acc = 0.0
+        bleu = 0.0
+        total_l1 = 0
+        total_l2  = 0
+        total_l3 = 0
+
+        k_vals = [1, 2, 3, 4, 5]
+        total_topk = {k:0.0 for k in k_vals}
+        per_disease_topk = defaultdict(lambda: {str(k):0.0 for k in k_vals})
+        losses = []
+        with torch.no_grad():
+            for i, (images, labels) in enumerate(val_loader):
+                batch_size = images.size(0)
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+                diseases = self.model(images)
+                loss1 = self.criterion(diseases, labels)
+
+                val_loss += loss1.item()
+
+        val_loss = val_loss / len(val_loader)
+
+        self.scheduler.step(val_loss)
+        if val_loss <= self.min_val_loss:
+           torch.save(self.model.state_dict(), self.save_path)
+           self.min_val_loss = val_loss
+
+        return val_loss 
 
 
 class KDTrainer(BaseTrainer):
