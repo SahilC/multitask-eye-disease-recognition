@@ -1,8 +1,8 @@
 run.batch_size = 32
-run.epochs = 25
+run.epochs = 15
 run.val_split = 0.15
 run.num_workers = 32
-run.print_every = 10
+run.print_every = 100
 
 run.trainval_csv_path = 'trainset_with_normal_30_sept.csv'
 run.test_csv_path = 'merged_combined_30_sept.csv'
@@ -18,7 +18,7 @@ run.test_csv_path = 'merged_combined_30_sept.csv'
 # run.trainval_csv_path = 'self-training_images.csv'
 run.tasks = [0, 1, 2]
 
-run.lr = 1e-2
+run.lr = 1e-3
 run.weight_decay = 1e-6
 run.momentum = 0.9
 run.dataset_dir = '/data2/fundus_images/'

@@ -1,4 +1,7 @@
+import os
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.autograd import Function
 from torchvision import models
@@ -7,7 +10,7 @@ import cv2
 import sys
 import numpy as np
 import argparse
-from dataset import MultiTaskModel
+from models import AbnormalNet
 class FeatureExtractor():
     """ Class for extracting activations and 
     registering gradients from targetted intermediate layers """
@@ -22,6 +25,7 @@ class FeatureExtractor():
     def __call__(self, x):
         outputs = []
         self.gradients = []
+        # print(list(self.model._modules.items()))
         for name, module in self.model._modules.items():
             x = module(x)
             if name in self.target_layers:
@@ -36,6 +40,8 @@ class ModelOutputs():
     3. Gradients from intermeddiate targetted layers. """
     def __init__(self, model, target_layers):
         self.model = model
+        self.model.features = self.model.conv
+        self.model.classifier = self.model.lin
         self.feature_extractor = FeatureExtractor(self.model.features, target_layers)
 
     def get_gradients(self):
@@ -43,9 +49,10 @@ class ModelOutputs():
 
     def __call__(self, x):
         target_activations, output  = self.feature_extractor(x)
-        output = output.view(output.size(0), -1)
+        # output = output.view(output.size(0), -1)
+        output = F.relu(output.squeeze())
         output = self.model.classifier(output)
-        return target_activations, output
+        return target_activations, F.softmax(output, dim=-1)
 
 def preprocess_image(img):
     means=[0.485, 0.456, 0.406]
@@ -67,7 +74,7 @@ def show_cam_on_image(img, mask):
     heatmap = np.float32(heatmap) / 255
     cam = heatmap + np.float32(img)
     cam = cam / np.max(cam)
-    cv2.imwrite("cam.jpg", np.uint8(255 * cam))
+    return cam
 
 class GradCam:
     def __init__(self, model, target_layer_names, use_cuda):
@@ -101,7 +108,7 @@ class GradCam:
 
         self.model.features.zero_grad()
         self.model.classifier.zero_grad()
-        one_hot.backward(retain_variables=True)
+        one_hot.backward(retain_graph=True)
 
         grads_val = self.extractor.get_gradients()[-1].cpu().data.numpy()
 
@@ -118,7 +125,7 @@ class GradCam:
         cam = cv2.resize(cam, (224, 224))
         cam = cam - np.min(cam)
         cam = cam / np.max(cam)
-        return cam
+        return cam, index
 
 class GuidedBackpropReLU(Function):
 
@@ -141,6 +148,7 @@ class GuidedBackpropReLU(Function):
 class GuidedBackpropReLUModel:
     def __init__(self, model, use_cuda):
         self.model = model
+        self.model.features = model.conv
         self.model.eval()
         self.cuda = use_cuda
         if self.cuda:
@@ -173,7 +181,7 @@ class GuidedBackpropReLUModel:
 
         # self.model.features.zero_grad()
         # self.model.classifier.zero_grad()
-        one_hot.backward(retain_variables=True)
+        one_hot.backward(retain_graph=True)
 
         output = input.grad.cpu().data.numpy()
         output = output[0,:,:,:]
@@ -184,8 +192,6 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--use-cuda', action='store_true', default=False,
                         help='Use NVIDIA GPU acceleration')
-    parser.add_argument('--image-path', type=str, default='./examples/both.png',
-                        help='Input image path')
     args = parser.parse_args()
     args.use_cuda = args.use_cuda and torch.cuda.is_available()
     if args.use_cuda:
@@ -208,32 +214,47 @@ if __name__ == '__main__':
     # Can work with any model, but it assumes that the model has a 
     # feature method, and a classifier method,
     # as in the VGG models in torchvision.
-    models = models.densenet121(pretrained=True)
-    models = MultiTaskModel(models, vocab_size = 193)
+    idx2label = {0:'melanoma', 1:'glaucoma', 2:'amd', 3:'diabetic retinopathy', 4:'normal'}
+    task_list = [0.15, 0.25, 0.4, 0.55, 0.7, 0.85]
+    for t in task_list:
+        for i in os.listdir('Inked/'):
+            spl = round(1 - t - 0.15, 2)
+            # file_name = i.replace('Inked','').replace('_LI.jpg','').replace('%','').replace('_','5C', 1)
+            file_name = 'Batch2079-805C1.2.826.0.1.3680043.2.110.1192826410552750.1.200_0000_000000_1559691433052d.jpg'
+            model = models.resnet50(pretrained=True)
+            model = nn.DataParallel(AbnormalNet('resnet50', model))
 
-    models.load_state_dict(torch.load('best_model_bk.pth'))
-    grad_cam = GradCam(model = models, \
-                    target_layer_names = ["disease_classifier"], use_cuda=args.use_cuda)
+            # model.load_state_dict(torch.load('/data2/sachelar/kd_models/kd_only-{:.2f}/best_model.pt'.format(spl)))
+            model.load_state_dict(torch.load('small_models/{:.2f}-resnet/best_model.pt'.format(spl)))
 
-    img = cv2.imread(args.image_path, 1)
-    img = np.float32(cv2.resize(img, (224, 224))) / 255
-    input = preprocess_image(img)
+            grad_cam = GradCam(model = model.module, \
+                            target_layer_names = ["7"], use_cuda=args.use_cuda)
+            try:
+                img = cv2.imread(os.path.join('/data2/fundus_images',file_name), 1)
+                img = np.float32(cv2.resize(img, (224, 224))) / 255
+                input = preprocess_image(img)
 
-    # If None, returns the map for the highest scoring category.
-    # Otherwise, targets the requested index.
-    target_index = None
+                # If None, returns the map for the highest scoring category.
+                # Otherwise, targets the requested index.
+                target_index = None
 
-    mask = grad_cam(input, target_index)
+                mask, index = grad_cam(input, target_index)
 
-    show_cam_on_image(img, mask)
 
-    gb_model = GuidedBackpropReLUModel(model = models.vgg19(pretrained=True), use_cuda=args.use_cuda)
-    gb = gb_model(input, index=target_index)
-    utils.save_image(torch.from_numpy(gb), 'gb.jpg')
+                cam = show_cam_on_image(img, mask)
+                if not os.path.exists(os.path.join("outputs", file_name.replace('.jpg',''))):
+                    os.mkdir(os.path.join("outputs", file_name.replace('.jpg','')))
+                cv2.imwrite(os.path.join("outputs", file_name.replace('.jpg','') + '/'+"{:.2f}".format(spl) + '_'+idx2label[index] + "_cam.jpg"), np.uint8(255 * cam))
 
-    cam_mask = np.zeros(gb.shape)
-    for i in range(0, gb.shape[0]):
-        cam_mask[i, :, :] = mask
+                gb_model = GuidedBackpropReLUModel(model = model.module, use_cuda=args.use_cuda)
+                gb = gb_model(input, index=target_index)
+                # utils.save_image(torch.from_numpy(gb),"outputs/{:.2f}".format(spl) +'_'+ file_name.replace('.jpg','')+ '_gb.jpg')
 
-    cam_gb = np.multiply(cam_mask, gb)
-    utils.save_image(torch.from_numpy(cam_gb), 'cam_gb.jpg')
+                cam_mask = np.zeros(gb.shape)
+                for i in range(0, gb.shape[0]):
+                    cam_mask[i, :, :] = mask
+
+                cam_gb = np.multiply(cam_mask, gb)
+                # utils.save_image(torch.from_numpy(cam_gb),"outputs/{:.2f}".format(spl) +'_'+  file_name.replace('.jpg','') + '_cam_gb.jpg')
+            except:
+                print("ERROR", file_name)

@@ -451,9 +451,10 @@ class SmallTrainer(BaseTrainer):
                 total_precision, total_cm)
 
 class AutoTrainer(BaseTrainer):
-    def __init__(self, model, optimizer, scheduler, criterion, epochs, print_every = 100, min_val_loss = 100, trainset_split = 0.85):
-        super(SmallTrainer, self).__init__(model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
-        self.save_location_dir = os.path.join('small_models', str(trainset_split)+'-'+str(datetime.now()))
+    def __init__(self, model, optimizer, scheduler, criterion, epochs,
+            print_every = 100, min_val_loss = 100000, trainset_split = 0.85):
+        super(AutoTrainer, self).__init__(model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
+        self.save_location_dir = os.path.join('auto_models', str(trainset_split)+'-'+str(datetime.now()))
         self.init_saves()
 
     def train(self, train_loader, val_loader):
@@ -493,14 +494,15 @@ class AutoTrainer(BaseTrainer):
         accuracy = 0.0
         total_disease_acc = 0.0
         total_train_loss = 0.0
-        for i, (images, labels) in enumerate(train_loader):
+        for i, data in enumerate(train_loader):
+               (_, images, labels, f_labels, text) = data
                batch_size = images.size(0)
                images = images.to(self.device)
                labels = labels.to(self.device)
                
                self.optimizer.zero_grad()
                disease = self.model(images)
-               loss = self.criterion(disease, labels)
+               loss = self.criterion(disease, images).div(images.size(0))
 
                loss.backward()
                self.optimizer.step()
@@ -537,12 +539,13 @@ class AutoTrainer(BaseTrainer):
         per_disease_topk = defaultdict(lambda: {str(k):0.0 for k in k_vals})
         losses = []
         with torch.no_grad():
-            for i, (images, labels) in enumerate(val_loader):
+            for i, data in enumerate(val_loader):
+                (_, images, labels, f_labels, text) = data
                 batch_size = images.size(0)
                 images = images.to(self.device)
                 labels = labels.to(self.device)
                 diseases = self.model(images)
-                loss1 = self.criterion(diseases, labels)
+                loss1 = self.criterion(diseases, images).div(images.size(0))
 
                 val_loss += loss1.item()
 
@@ -561,6 +564,7 @@ class KDTrainer(BaseTrainer):
         super(KDTrainer, self).__init__(model, optimizer, scheduler, criterion, epochs, print_every, min_val_loss)
         self.criterion = self.distillation_loss
         self.kd_model = kd_model
+        self.threshold = 0.9
         self.kd_type = kd_type
         self.kd_model.eval()
         self.save_location_dir = os.path.join('kdmodels', kd_type +'-'+str(trainset_split)+'-'+str(datetime.now()))
@@ -568,7 +572,9 @@ class KDTrainer(BaseTrainer):
 
     def distillation_loss(self, y, labels, teacher_scores, T = 5, alpha = 0.95, reduction_kd='mean', reduction_nll='mean'):
         if teacher_scores is not None:
-            d_loss = torch.nn.KLDivLoss(reduction=reduction_kd)(F.log_softmax(y/ T, dim= -1), F.softmax(teacher_scores / T, dim=-1)) * T * T
+            # d_loss = torch.nn.KLDivLoss(reduction=reduction_kd)(F.log_softmax(y/ T, dim= -1), F.softmax(teacher_scores / T, dim=-1)) * T * T
+            preds = F.softmax(teacher_scores , dim=-1).argmax(dim=-1)
+            d_loss = F.cross_entropy(y, labels, reduction=reduction_nll)
         else:
             assert alpha == 0, 'alpha cannot be {} when teacher scores are not provided'.format(alpha)
             d_loss = 0.0
@@ -590,6 +596,7 @@ class KDTrainer(BaseTrainer):
         for e in range(self.epochs):
                 self.model.train()
                 total_train_loss, accuracy = self.train_iteration(train_loader)
+                break
                 print("Epoch", e)
                 self.summary_writer.add_scalar('training/total_train_loss', total_train_loss, e)
                 self.summary_writer.add_scalar('training/acc', accuracy, e)
@@ -636,6 +643,7 @@ class KDTrainer(BaseTrainer):
         total_train_loss = 0.0
         total_kd_loss = 0.0
         total_nll_loss = 0.0
+        contr = 0
         for i, data in enumerate(train_loader):
                images, labels = self.unpack_data(data)
                batch_size = images.size(0)
@@ -644,21 +652,30 @@ class KDTrainer(BaseTrainer):
 
                self.optimizer.zero_grad()
 
-               disease = self.model(images)
                teacher_scores = self.kd_model(images)
+               val, pred = F.softmax(teacher_scores, dim=-1).max(dim=-1)
 
-               loss = self.criterion(disease, labels, teacher_scores)
+               index = val >= self.threshold
+               if index.any().item():
+                   # print(index, val)
+                   images = images[index]
+                   labels = labels[index]
+                   teacher_scores = teacher_scores[index]
+                   contr += images.size(0)
+                   continue
+                   disease = self.model.module(images)
+                   loss = self.criterion(disease, labels, teacher_scores)
 
-               loss[0].backward()
-               self.optimizer.step()
+                   loss[0].backward()
+                   self.optimizer.step()
 
-               train_loss += loss[0].item()
-               total_train_loss += loss[0].item()
-               total_kd_loss += loss[1].item()
-               total_nll_loss += loss[2].item()
+                   train_loss += loss[0].item()
+                   total_train_loss += loss[0].item()
+                   total_kd_loss += loss[1].item()
+                   total_nll_loss += loss[2].item()
 
-               d_pred = F.log_softmax(disease, dim= -1).argmax(dim=-1)
-               total_disease_acc += d_pred.eq(labels).sum().item()
+                   d_pred = F.log_softmax(disease, dim= -1).argmax(dim=-1)
+                   total_disease_acc += d_pred.eq(labels).sum().item()
 
                if i != 0 and i % self.print_every == 0:
                   avg_loss = train_loss / self.print_every
@@ -672,6 +689,7 @@ class KDTrainer(BaseTrainer):
 
                   train_loss = 0.0
                   total_disease_acc = 0.0
+        print("COUNT", contr)
         return (total_train_loss, total_disease_acc/batch_size)
 
     def validate(self, val_loader, epoch = 0):
@@ -697,29 +715,36 @@ class KDTrainer(BaseTrainer):
                 batch_size = images.size(0)
                 images = images.to(self.device)
                 labels = labels.to(self.device)
-                diseases = self.model(images)
                 teacher_scores = self.kd_model(images)
+                val, pred = F.softmax(teacher_scores, dim=-1).max(dim=-1)
 
-                loss1, _, _ = self.criterion(diseases, labels, teacher_scores)
+                index = val >= self.threshold
+                if index.any().item():
+                    images = images[index]
+                    labels = labels[index]
+                    teacher_scores = teacher_scores[index]
+                    diseases = self.model.module(images)
 
-                val_loss += loss1.item()
+                    loss1, _, _ = self.criterion(diseases, labels, teacher_scores)
 
-                # Evaluation of P, R, F1, BLEU
-                d_pred = F.log_softmax(diseases, dim = -1).argmax(dim=-1)
-                total_d_acc += (d_pred.eq(labels).sum().item() / batch_size)
-                acc, recall, precision, f1 = accuracy_recall_precision_f1(d_pred,
-                        labels)
+                    val_loss += loss1.item()
 
-                total_recall += np.mean(recall)
-                total_precision += np.mean(precision)
-                total_f1 += np.mean(f1)
+                    # Evaluation of P, R, F1, BLEU
+                    d_pred = F.log_softmax(diseases, dim = -1).argmax(dim=-1)
+                    total_d_acc += (d_pred.eq(labels).sum().item() / batch_size)
+                    acc, recall, precision, f1 = accuracy_recall_precision_f1(d_pred,
+                            labels)
 
-                cm = calculate_confusion_matrix(d_pred, labels)
-                try:
-                    total_cm += (cm / batch_size)
-                except:
-                    print("error occured for this CM")
-                    print(cm / batch_size)
+                    total_recall += np.mean(recall)
+                    total_precision += np.mean(precision)
+                    total_f1 += np.mean(f1)
+
+                    cm = calculate_confusion_matrix(d_pred, labels)
+                    try:
+                        total_cm += (cm / batch_size)
+                    except:
+                        print("error occured for this CM")
+                        print(cm / batch_size)
         val_loss = val_loss / len(val_loader)
         total_d_acc = total_d_acc / len(val_loader)
         total_f1 = total_f1 / len(val_loader)

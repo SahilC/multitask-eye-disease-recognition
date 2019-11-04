@@ -8,7 +8,7 @@ import torch.nn as nn
 import torchvision.models as models
 
 from trainer import KDTrainer, MultiTaskTrainer, SmallTrainer
-from models import MultiTaskModel
+from models import AutoEncoder, MultiTaskModel
 from models import AbnormalNet
 from dataset import CustomDatasetFromImages
 from dataset import GradedDatasetFromImages
@@ -72,25 +72,31 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
 
     # model = MnistCNNModel()
     if model_type == 'densenet121':
-        model = models.densenet121(pretrained=True)
+        model = models.densenet121(pretrained=False)
     elif model_type == 'resnet101':
-        model = models.resnet101(pretrained=True)
+        model = models.resnet101(pretrained=False)
     elif model_type == 'resnet50':
-        model = models.resnet50(pretrained=True)
+        model = models.resnet50(pretrained=False)
     elif model_type == 'resnet34':
-        model = models.resnet34(pretrained=True)
+        model = models.resnet34(pretrained=False)
     elif model_type == 'vgg19':
-        model = models.vgg19(pretrained=True)
+        model = models.vgg19(pretrained=False)
 
     # model = models.googlenet(pretrained=True)
     # model = MultiTaskModel(model, vocab_size=lang.n_words, model_type =  model_type)
+    # transfer_model = AutoEncoder(model_type, model = model)
+    # transfer_model = nn.DataParallel(transfer_model)
+    # transfer_model.load_state_dict(torch.load('auto_models/0.7/best_model.pt'))
+
     kd_model = AbnormalNet(model_type, model = model)
     kd_model = nn.DataParallel(kd_model)
 
     kd_model.load_state_dict(torch.load('small_models/{:.2f}-resnet/best_model.pt'.format(round(1 - val_split - 0.15, 2))))
 
-    model = AbnormalNet(model_type, model = model)
+    model = AbnormalNet(model_type, model=model)
     model = nn.DataParallel(model)
+    # kd_model.module.conv.load_state_dict(transfer_model.module.conv.state_dict())
+    # model.module.conv = copy.deepcopy(transfer_model.module.conv)
     # model.load_state_dict(torch.load('models/2019-09-27 07:17:11.148440/best_model.pt'))
     # All Device training
     # model.load_state_dict(torch.load('models/0_1_2-2019-09-3007:56:52.568630/best_model.pt'))
@@ -120,13 +126,13 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
                                   min_lr=1e-7,
                                   verbose=True)
     trainset_percent = (1 - val_split - 0.15)
+    model = copy.deepcopy(kd_model)
     # trainer = SmallTrainer(model, optimizer, scheduler, criterion, epochs,
     #       print_every =  print_every, trainset_split = trainset_percent)
-    trainer = KDTrainer(kd_model, model, optimizer, scheduler, criterion, epochs,
-           print_every =  print_every, trainset_split = trainset_percent)
-    trainer.train(train_loader_small, val_loader)
+    trainer = KDTrainer(kd_model, model, optimizer, scheduler, criterion, epochs, print_every =  print_every, trainset_split = trainset_percent, kd_type='kd_only')
+    trainer.train(train_loader, val_loader)
     # model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt')))
-
+#
     val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = trainer.validate(test_loader)
 
     with open(trainer.output_log, 'a+') as out:
@@ -134,52 +140,52 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
         print(total_cm, file=out)
 
     # =============================== TRAIN WITH KD MODEL ========================
-    optimizer = torch.optim.SGD(model.parameters(),
-                                weight_decay=weight_decay,
-                                momentum=momentum,
-                                lr = lr,
-                                nesterov=True)
-    scheduler = ReduceLROnPlateau(optimizer,
-                                  factor=0.5,
-                                  patience=3,
-                                  min_lr=1e-7,
-                                  verbose=True)
-    epochs = 20
-    print_every = 100
-
-    kd_model = copy.deepcopy(model)
-
-    trainer = KDTrainer(kd_model, model, optimizer, scheduler, criterion, epochs, print_every=print_every, trainset_split = trainset_percent, kd_type = 'kd_only')
-    trainer.train(train_loader, test_loader)
-
-    # model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt')))
-    # model.load_state_dict(torch.load(os.path.join('kdmodels/kd_only-0.7999999999999999-2019-10-03 07:16:43.520416','best_model.pt')))
-
-    # val_loss, total_d_acc, total_acc, bleu, total_f1,total_recall, total_precision, sent_gt, sent_pred, total_topk,per_disease_topk, per_disease_bleu, total_cm = trainer.validate(test_loader)
-    # with open(trainer.output_log, 'a+') as out:
-    #    print('Test Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(val_loss, total_acc, total_d_acc, bleu), file=out)
-    #    print('total_topk',total_topk, file=out)
-    #    print('per_disease_topk', per_disease_topk, file=out)
-    #    print('per_disease_bleu', per_disease_bleu, file=out)
-    #    print(total_cm, file=out)
-    #    for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
-    #        print(sent_gt[k], file=out)
-    #        print(sent_pred[k], file=out)
-    #        print('---------------------', file=out)
-    # trainer.test(test_loader)
-
-    val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = trainer.validate(test_loader)
-
-    with open(trainer.output_log, 'a+') as out:
-        print('Test Loss',val_loss,'total_d_acc',total_d_acc, 'F1', total_f1, 'R', total_recall,'P', total_precision, file=out)
-        print(total_cm, file=out)
-
+#    optimizer = torch.optim.SGD(model.parameters(),
+#                                weight_decay=weight_decay,
+#                                momentum=momentum,
+#                                lr = lr,
+#                                nesterov=True)
+#    scheduler = ReduceLROnPlateau(optimizer,
+#                                  factor=0.5,
+#                                  patience=3,
+#                                  min_lr=1e-7,
+#                                  verbose=True)
+#    epochs = 20
+#    print_every = 100
+#
+#    kd_model = copy.deepcopy(model)
+#
+#    trainer = KDTrainer(kd_model, model, optimizer, scheduler, criterion, epochs, print_every=print_every, trainset_split = trainset_percent, kd_type = 'kd_only')
+#    trainer.train(train_loader, val_loader)
+#
+#    # model.load_state_dict(torch.load(os.path.join(trainer.save_location_dir,'best_model.pt')))
+#    # model.load_state_dict(torch.load(os.path.join('kdmodels/kd_only-0.7999999999999999-2019-10-03 07:16:43.520416','best_model.pt')))
+#
+#    # val_loss, total_d_acc, total_acc, bleu, total_f1,total_recall, total_precision, sent_gt, sent_pred, total_topk,per_disease_topk, per_disease_bleu, total_cm = trainer.validate(test_loader)
+#    # with open(trainer.output_log, 'a+') as out:
+#    #    print('Test Loss:{:.8f}\tAcc:{:.8f}\tDAcc:{:.8f}\tBLEU:{:.8f}'.format(val_loss, total_acc, total_d_acc, bleu), file=out)
+#    #    print('total_topk',total_topk, file=out)
+#    #    print('per_disease_topk', per_disease_topk, file=out)
+#    #    print('per_disease_bleu', per_disease_bleu, file=out)
+#    #    print(total_cm, file=out)
+#    #    for k in np.random.choice(list(range(len(sent_gt))), size=10, replace=False):
+#    #        print(sent_gt[k], file=out)
+#    #        print(sent_pred[k], file=out)
+#    #        print('---------------------', file=out)
+#    # trainer.test(test_loader)
+#
+#    val_loss, total_d_acc, total_f1, total_recall, total_precision, total_cm = trainer.validate(test_loader)
+#
+#    with open(trainer.output_log, 'a+') as out:
+#        print('Test Loss',val_loss,'total_d_acc',total_d_acc, 'F1', total_f1, 'R', total_recall,'P', total_precision, file=out)
+#        print(total_cm, file=out)
+#
     # trainer.test(test_loader)
 
 if __name__ == "__main__":
     # task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
-    # task_configs = [0.05, 0.15, 0.25, 0.4, 0.55, 0.7, 0.85]
-    task_configs = [0.05]
+    task_configs = [0.15, 0.25, 0.4, 0.55, 0.7, 0.85]
+    # task_configs = [0.05]
     for i, t in enumerate(task_configs):
         print("Running", (1 -t - 0.15))
     # gin.parse_config_file('config.gin')
