@@ -143,7 +143,7 @@ class MultiTaskModel(nn.Module):
                 nn.ReLU(), nn.Linear(512, 321))
         self.language_classifier = LanguageModel(inp_size = in_feats, vocab_size = vocab_size)
 
-    def forward(self, data,text):
+    def forward(self, data, text):
         features = self.feature_extract(data).squeeze()
         out = F.relu(features)
         if self.model_type == 'densenet121':

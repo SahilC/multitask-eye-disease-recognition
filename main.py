@@ -7,9 +7,8 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-from trainer import KDTrainer, MultiTaskTrainer, SmallTrainer
-from models import AutoEncoder, MultiTaskModel
-from models import AbnormalNet
+from trainer import MultiTaskTrainer
+from models import MultiTaskModel
 from dataset import CustomDatasetFromImages
 from dataset import GradedDatasetFromImages
 
@@ -74,11 +73,27 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
     elif model_type == 'vgg19':
         model = models.vgg19(pretrained=False)
 
+    model = MultiTaskModel(model, vocab_size=lang.n_words, model_type = model_type)
+
+    model = nn.DataParallel(model)
+
     print(model)
 
     model = model.to('cuda')
 
     criterion = nn.CrossEntropyLoss()
+
+    optimizer = torch.optim.SGD(model.parameters(),
+                                weight_decay=weight_decay,
+                                momentum=momentum,
+                                lr=lr,
+                                nesterov=True)
+
+    scheduler = ReduceLROnPlateau(optimizer,
+                                  factor=0.5,
+                                  patience=3,
+                                  min_lr=1e-7,
+                                  verbose=True)
 
     trainer = MultiTaskTrainer(model, optimizer, scheduler, criterion, tasks, epochs, lang, print_every = print_every)
 
@@ -100,9 +115,9 @@ def run(batch_size, epochs, val_split, num_workers, print_every,
 if __name__ == "__main__":
     task_configs =[[0],[1],[2],[0,1], [1,2],[0,2],[0, 1, 2]]
     for i, t in enumerate(task_configs):
-        print("Running", (1 -t - 0.15))
+        print("Running", t)
         gin.parse_config_file('config.gin')
-        gin.bing_parameter('run.tasks', t)
+        gin.bind_parameter('run.tasks', t)
         run()
         gin.clear_config()
 
